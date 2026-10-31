@@ -72,7 +72,8 @@ class ModelError(Exception):
 MNEMONIC = re.compile(r"^[A-Z]{2,3}$")
 DESCRIPTOR = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
-TYPE = re.compile(r"^[a-z]+( ?\(\d+(, ?\d+)?\))?$")
+TYPE = re.compile(r"^[A-Za-z][A-Za-z0-9]*( [A-Za-z][A-Za-z0-9]*)*( ?\(\d+(, ?\d+)?\))?$")
+NAME = re.compile(r"^[A-Za-z0-9_]+$")
 JINJA = re.compile(r"\{[{%#]|[}%#]\}")
 
 
@@ -171,7 +172,7 @@ def read(root: Path) -> tuple[dict, list[tuple[Anchor, list[Attribute], Attribut
             m["attribute"]: checked(m["column"], SNAKE, f"{mnemonic}_{descriptor} column")
             for m in as_list(mapping.get("attributes"))
         }
-        routes = [checked(i["route"], DESCRIPTOR, f"{mnemonic}_{descriptor} route") for i in as_list(node.get("identifier"))]
+        routes = [checked(i["route"], NAME, f"{mnemonic}_{descriptor} route") for i in as_list(node.get("identifier"))]
         if len(routes) != 1:
             raise ModelError(f"{mnemonic}_{descriptor} needs exactly one identifier route")
         anchor = Anchor(

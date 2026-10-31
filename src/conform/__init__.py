@@ -93,14 +93,18 @@ def value_expression(prop: dict) -> str:
     logic = prop.get("transformLogic")
     if not logic:
         return value
-    unquoted = re.sub(r"'(?:[^']|'')*'", "''", logic)
-    words = [(w.group(0).lower(), w.group(1)) for w in re.finditer(r"[A-Za-z_][A-Za-z0-9_]*(?=\s*(\()?)", unquoted)]
-    if ";" in unquoted or any(not (name in FUNCTIONS if call else name in KEYWORDS) for name, call in words):
+    parts = re.split(r"('(?:[^']|'')*')", logic)  # odd parts are string literals
+    code = " ".join(parts[0::2])
+    words = [(w.group(0).lower(), w.group(1)) for w in re.finditer(r"[A-Za-z_][A-Za-z0-9_]*(?=\s*(\()?)", code)]
+    if re.search(r";|--|/\*|'", code) or any(
+        name not in KEYWORDS and not (call and name in FUNCTIONS) for name, call in words
+    ):
         raise ContractError(
             f"transformLogic of {prop['name']} may only rewrite its own value with "
             f"{', '.join(sorted(FUNCTIONS))}: {logic}"
         )
-    return re.sub(r"\bvalue\b", value, logic)
+    parts[0::2] = [re.sub(r"\bvalue\b", lambda _: value, part, flags=re.IGNORECASE) for part in parts[0::2]]
+    return "".join(parts)
 
 
 def raw_model(name: str, resource: str) -> str:

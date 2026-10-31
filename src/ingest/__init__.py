@@ -14,7 +14,7 @@ import os
 import sys
 from collections.abc import Iterator, Mapping
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urljoin, urlsplit
 
 FEED = "https://demodata.grapecity.com/adventureworks/odata/v1"
 
@@ -30,29 +30,41 @@ LAYOUT = "../{table_name}/date={YYYY}-{MM}-{DD}/hour={HH}/{load_id}.{file_id}.{e
 
 log = logging.getLogger("ingest")
 
+DEFAULT_PORTS = {"http": 80, "https": 443}
+
 
 def lake_root() -> Path:
     return Path(os.environ.get("LAKE_ROOT", "lake")).resolve()
 
 
+def origin(url: str) -> tuple[str, str, int | None]:
+    """The scheme, host and port a URL reaches, the port spelled out when it is the default."""
+    parts = urlsplit(url)
+    return parts.scheme.lower(), (parts.hostname or "").lower(), parts.port or DEFAULT_PORTS.get(parts.scheme.lower())
+
+
 def odata_rows(url: str) -> Iterator[dict]:
     """Every row of an OData feed, following ``@odata.nextLink`` page by page.
 
-    A next link is followed only to the feed's own scheme and host: the feed names the URL the
-    next request goes to, and it must not be able to send that request elsewhere.
+    A next link, resolved against the page it came from, is followed only to the feed's own
+    origin, and no request follows a redirect: the feed names where the next request goes, and
+    it must not be able to send that request elsewhere.
     """
     from dlt.sources.helpers import requests
 
-    origin = urlsplit(url)[:2]
+    home = origin(url)
     while url:
-        if urlsplit(url)[:2] != origin:
-            raise ValueError(f"next link {url} leaves the feed at {urlunsplit(origin + ('', '', ''))}")
-        response = requests.get(url)
+        if origin(url) != home:
+            raise ValueError(f"next link {url} leaves the feed's origin {home}")
+        response = requests.get(url, allow_redirects=False)
+        if response.is_redirect:
+            raise ValueError(f"{url} redirects to {response.headers.get('location')}; redirects are not followed")
         response.raise_for_status()
         page = response.json()
         for row in page.get("value", []):
             yield {"data": json.dumps(row)}
-        url = page.get("@odata.nextLink")
+        next_link = page.get("@odata.nextLink")
+        url = urljoin(url, next_link) if next_link else None
 
 
 def land(name: str, url: str) -> None:

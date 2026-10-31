@@ -24,8 +24,8 @@ uv run task generate                # regenerate every layer's models
 uv run task build                   # build warehouse/dev.duckdb (TARGET=prod for the other)
 ```
 
-`uv run task --list` shows every task. Integrate refuses `--full-refresh`: its history is only
-appended to (ADR-0006).
+`uv run task --list` shows every task. Integrate ignores `--full-refresh` and builds incrementally:
+its history is only appended to (ADR-0006).
 
 The first business question it answers: how many products were on sale on a given day,
 per product line and colour? The sell dates carry the day, so the question reads each

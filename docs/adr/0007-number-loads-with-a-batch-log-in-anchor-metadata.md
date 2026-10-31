@@ -14,4 +14,4 @@ Rejected: the dbt invocation id in Metadata, which is a uuid and cannot be order
 
 ## Consequences
 
-A bad batch rolls back by deleting its annex and anchor rows, then every posit left without an annex row. A batch stays `RUNNING` until serve has read it: a build where a node errored, failed or was skipped, or that did not build every serve model, leaves it `RUNNING`, and serve rebuilds the identities of every `RUNNING` batch. The next build opens a new one. A build that wrote no Anchor row leaves no batch.
+A bad batch rolls back by deleting its annex and anchor rows, then every posit left without an annex row. A batch stays `RUNNING` until serve has read it: a build where a node errored or was skipped, or that did not build every serve model, leaves it `RUNNING`, and serve rebuilds the identities of every `RUNNING` batch. The next build that builds all of serve closes every `RUNNING` batch, `SUCCEEDED` or `VIOLATIONS` by the integrity violations at that time. A failed test does not hold a batch open: a failing `IntegrityViolations` is what `VIOLATIONS` records. A build that wrote no Anchor row leaves no batch of its own.

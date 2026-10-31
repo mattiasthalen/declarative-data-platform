@@ -20,4 +20,4 @@ dlt writes under `<bucket>/<dataset>/<layout>` and keeps its own bookkeeping in 
 
 A load lands file by file. A build that reads the lake while ingest is still writing a load can stage part of it, and conform's watermark then skips the rest (A4).
 
-An OData next link is followed only to the feed's own scheme and host; a link elsewhere fails the resource.
+An OData next link, resolved against the page it came from, is followed only to the feed's own scheme, host and port, and no request follows a redirect; either fails the resource.

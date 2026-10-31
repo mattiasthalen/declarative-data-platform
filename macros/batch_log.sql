@@ -3,10 +3,10 @@
     open_batch runs before the first model: it opens a RUNNING batch, whose id every Anchor
     row written by this invocation carries in its Metadata column (anchor_batch).
     close_batch runs after the last node. If no Anchor row carries the batch, it wrote nothing
-    and the batch is removed. If serve has not read it, because a node errored, failed or was
-    skipped or because serve was not selected, the batch is left RUNNING, and the next
-    invocation opens a new one. Otherwise it closes SUCCEEDED, or VIOLATIONS with the count
-    from IntegrityViolations. -#}
+    and the batch is removed. If serve has not read the batches, because a node errored or was
+    skipped or because serve was not selected, every RUNNING batch stays RUNNING, and the
+    next invocation opens a new one. Otherwise every RUNNING batch, this one and any an
+    earlier build left, closes SUCCEEDED, or VIOLATIONS with the count from IntegrityViolations. -#}
 
 {% macro load_batch_log() -%}
     integrate."LOAD_BATCH_LOG"
@@ -51,14 +51,16 @@ from {{ load_batch_log() }};
         ).columns[0].values()[0] -%}
     {%- endif -%}
 
+    {%- set statements = [] -%}
     {%- if referenced == 0 -%}
-        {{ return('delete from ' ~ load_batch_log() ~ ' where "BATCH_ID" = ' ~ anchor_batch()) }}
+        {%- do statements.append('delete from ' ~ load_batch_log() ~ ' where "BATCH_ID" = ' ~ anchor_batch()) -%}
     {%- endif -%}
 
     {#- Serve rebuilds the identities that RUNNING batches touched, so a batch stays RUNNING
-        until serve has read it: when any node errored, failed or was skipped, or when the
-        invocation did not build every serve model. -#}
-    {%- set unfinished = results | selectattr('status', 'in', ['error', 'fail', 'skipped']) | list -%}
+        until serve has read it: when any node errored or was skipped, or when the invocation
+        did not build every serve model. A failed test does not hold it: serve does not depend
+        on tests, and IntegrityViolations failing is what VIOLATIONS records. -#}
+    {%- set unfinished = results | selectattr('status', 'in', ['error', 'skipped']) | list -%}
     {%- set built = results | selectattr('status', 'equalto', 'success') | map(attribute='node.unique_id') | list -%}
     {%- set unserved = [] -%}
     {%- for node in graph.nodes.values() -%}
@@ -67,15 +69,16 @@ from {{ load_batch_log() }};
         {%- endif -%}
     {%- endfor -%}
     {%- if unfinished | length > 0 or unserved | length > 0 -%}
-        {{ return('select 1') }}
+        {{ return((statements | join('; ')) or 'select 1') }}
     {%- endif -%}
 
     {%- set violations = adapter.get_relation(database=target.database, schema='integrate', identifier='IntegrityViolations') -%}
     {%- set counted = 'coalesce((select count(*) from integrate."IntegrityViolations"), 0)' if violations is not none else '0' -%}
-    {{ return(
+    {%- do statements.append(
         'update ' ~ load_batch_log() ~ ' set "COMPLETED_AT" = cast(now() as timestamp), '
         ~ '"INTEGRITY_VIOLATIONS" = ' ~ counted ~ ', '
         ~ '"STATUS" = case when ' ~ counted ~ ' = 0 then \'SUCCEEDED\' else \'VIOLATIONS\' end '
-        ~ 'where "BATCH_ID" = ' ~ anchor_batch()
-    ) }}
+        ~ 'where "STATUS" = \'RUNNING\''
+    ) -%}
+    {{ return(statements | join('; ')) }}
 {% endmacro %}
