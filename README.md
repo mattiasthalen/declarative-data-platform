@@ -25,12 +25,13 @@ uv run dbt build --target dev       # build warehouse/dev.duckdb
 ```
 
 The first business question it answers: how many products were on sale on a given day,
-per product line and colour?
+per product line and colour? The sell dates carry the day, so the question reads each
+product's current version:
 
 ```sql
 select product__product_line, product__color, count(*)
 from serve__uss.product
-where product__valid_from <= date '2013-06-01' and date '2013-06-01' < product__valid_to
+where product__valid_to = timestamp '9999-12-31' and _key__product like '%|%'
   and product__sell_start <= date '2013-06-01'
   and (product__sell_end is null or product__sell_end >= date '2013-06-01')
   and (product__discontinued is null or date '2013-06-01' < product__discontinued)
