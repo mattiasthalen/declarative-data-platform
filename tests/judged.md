@@ -128,3 +128,48 @@ Pass when all of these hold:
    TransactionHistories row counts and date range).
 6. Nothing in the repo's docs still says resources are declared in Python or that
    contracts sit flat in `contracts/*.yaml`.
+# Judged checks for story #16
+
+Two acceptance criteria of the scheduled run are judged at review rather than run. The
+reviewer reads the evidence and the README, and records pass or fail for each line below.
+
+## AC13: the schedule fires on its own, live
+
+On a local Prefect server and process worker, with the real feed and the real
+`task ingest:source`, `run` fires on its schedule at the top of an hour without being
+triggered by hand, every source lands, `build` is green and `run` ends Completed ([4], [8]).
+
+Pass when all of these hold:
+
+1. The evidence shows the `run` flow run's scheduled start time equal to its expected
+   start time, and that time is on the hour (hh:00:00) in UTC.
+2. The run was created by the scheduler, not by hand: its `auto_scheduled` flag is true,
+   or its creator is the scheduler service, and nothing in the evidence shows a
+   `prefect deployment run`, a UI "Quick run" or an API `create_flow_run` call for it.
+3. Its children are one `ingest-source` flow run per listed source and one `build` flow
+   run, each with this `run` as parent, and every one of them ended Completed.
+4. `run` itself ended Completed.
+5. The `build` flow run's log, `task build`'s output, shows `PASS` for every node it
+   ran, a final `ERROR=0`, and no `ERROR` line anywhere.
+6. The ingest that ran was the real one: the `ingest-source` runs used the default
+   command (`uv run task ingest:source -- <source>`), not a fake or an override.
+
+## AC18: the README says how to run the schedule
+
+The README's "Run it" section says how to run the schedule locally and what the infra
+must provide: the server, the work pool name in the environment, and the repo as working
+directory.
+
+Pass when all of these hold:
+
+1. A reader who has never used Prefect can, from the README alone, start a local server
+   (`orchestrate:server`), start a worker (`orchestrate:worker`) and deploy
+   (`orchestrate:deploy`), in that order, and knows which environment variables to set
+   first and to what: `ORCHESTRATE_WORK_POOL`, and the Prefect API URL wherever the
+   tasks do not set it themselves.
+2. It says which parts the infra owns (the Prefect server and its state store, the work
+   pool and its workers, the pool's name in the environment, a working directory holding
+   the repo) and which the repo owns (`orchestrate/prefect.yaml`: what runs, when, the
+   concurrency limits and timeouts; `orchestrate/flows.py`).
+3. Every command it gives exists: each task appears in `uv run task --list`, and each
+   variable it names is one the deploy or the worker reads.
