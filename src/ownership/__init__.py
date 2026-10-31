@@ -124,11 +124,12 @@ def describe(drifts: list[Drift]) -> str:
         except UnicodeDecodeError:
             out.append("binary file, no diff shown")
             continue
-        if committed.replace("\r\n", "\n") == d.generated:
+        if "\r\n" in committed and "\r\n" not in d.generated:
             out.append("line endings differ: the committed file has CRLF, the generator writes LF")
-            continue
+            committed = committed.replace("\r\n", "\n")
         if committed.rstrip("\n") == d.generated.rstrip("\n"):
-            out.append("only the newlines at the end of the file differ")
+            if committed != d.generated:
+                out.append("only the newlines at the end of the file differ")
             continue
         lines = [
             line.rstrip("\n")
