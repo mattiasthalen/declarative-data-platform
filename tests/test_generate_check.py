@@ -1,4 +1,4 @@
-"""`generate --check` and `task check` report drift and write nothing (story 2, D1: AC1-AC9, EC1-EC7).
+"""`generate --check` and `task check` report drift and write nothing (story 2, D1: AC1-AC9, EC1-EC10).
 
 Each test runs the generators as subprocesses, ``uv run <layer> generate --check`` or
 ``uv run task check``, in one shared copy of the repo, without a dbt build. The copy's
@@ -506,3 +506,64 @@ def test_check_never_reports_another_generators_folders(ws, layer):
     for other in LAYERS:
         if other != layer:
             clean(check(ws, other), other)
+
+
+# --------------------------------------------------------------------------- EC8, EC9, EC10
+
+
+def test_undecodable_readme_in_hand_written_folder_fails_no_check(ws):
+    """EC8: a README.md of invalid UTF-8 in a hand-written folder crashes no check: every check exits 0, silent."""
+    plain = ws.root / "models" / "conform" / "hand_written_blob"
+    plain.mkdir()
+    (plain / "README.md").write_bytes(INVALID_UTF8)
+    (plain / "my_model.sql").write_text("select 1 as mine\n", encoding="utf-8")
+    for layer in LAYERS:
+        step = check(ws, layer)
+        assert "Traceback" not in step.output, f"{layer}:\n{step.output[-3000:]}"
+        clean(step, layer)
+
+
+YAML_SYNTAX_ERROR = "\nbroken: [unclosed, {flow: mapping\n"
+
+
+def test_contract_yaml_syntax_error_exits_2(ws):
+    """EC9: a contract that is not readable YAML makes conform --check exit 2 with generate's message."""
+    target = contract_path(ws)
+    target.write_text(target.read_text(encoding="utf-8") + YAML_SYNTAX_ERROR, encoding="utf-8")
+    _same_error_as_generate(ws, "conform")
+
+
+def test_model_yaml_syntax_error_exits_2(ws):
+    """EC9: an anchor/model.yaml that is not readable YAML makes integrate --check exit 2 with generate's message."""
+    target = ws.root / "anchor" / "model.yaml"
+    target.write_text(target.read_text(encoding="utf-8") + YAML_SYNTAX_ERROR, encoding="utf-8")
+    _same_error_as_generate(ws, "integrate")
+
+
+WHITESPACE_NOTE = re.compile(r"line ending|newline", re.IGNORECASE)
+
+
+def _whitespace_drift_is_named(ws: Workspace, target: Path) -> None:
+    step = check(ws, "conform")
+    drifted(step, "conform")
+    assert report(ws, step) == {("changed", rel(ws, target))}, step.output[-3000:]
+    lines = section(step, ws, rel(ws, target))
+    assert any(WHITESPACE_NOTE.search(line) for line in lines[1:]), (
+        f"no line under {rel(ws, target)} names line endings or the final newline:\n" + "\n".join(lines)
+    )
+
+
+def test_crlf_only_drift_says_line_endings(ws):
+    """EC10: a generated file differing only in CRLF line endings gets a line under `changed` saying so."""
+    target = generated_file(ws, "conform")
+    target.write_bytes(target.read_bytes().replace(b"\n", b"\r\n"))
+    _whitespace_drift_is_named(ws, target)
+
+
+def test_missing_final_newline_only_drift_says_newline(ws):
+    """EC10: a generated file differing only in its final newline gets a line under `changed` saying so."""
+    target = generated_file(ws, "conform")
+    content = target.read_bytes()
+    assert content.endswith(b"\n"), f"{rel(ws, target)} has no final newline to remove"
+    target.write_bytes(content[:-1])
+    _whitespace_drift_is_named(ws, target)
