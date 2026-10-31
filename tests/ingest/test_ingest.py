@@ -25,19 +25,21 @@ LAYOUT = re.compile(r"^(?P<resource>[^/]+)/date=\d{4}-\d{2}-\d{2}/hour=\d{2}/[^/
 
 
 class Feed:
-    """A stub OData feed: path (with query) -> (status, JSON body)."""
+    """A stub OData feed: path (with query) -> (status, JSON body[, extra headers])."""
 
-    def __init__(self):
-        self.pages: dict[str, tuple[int, dict]] = {}
+    def __init__(self, port: int = 0):
+        self.pages: dict[str, tuple] = {}
         self.requested: list[str] = []
         feed = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 feed.requested.append(self.path)
-                status, body = feed.pages.get(self.path, (404, {"error": "no such page"}))
+                status, body, *extra = feed.pages.get(self.path, (404, {"error": "no such page"}))
                 payload = json.dumps(body).encode()
                 self.send_response(status)
+                for name, value in (extra[0] if extra else {}).items():
+                    self.send_header(name, value)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
@@ -46,7 +48,7 @@ class Feed:
             def log_message(self, *args):
                 pass
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
         self.base = f"http://127.0.0.1:{self.server.server_port}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
@@ -183,6 +185,83 @@ def test_next_link_to_another_host_is_refused(feed, lake, capsys, caplog):
         assert code == 1
         assert foreign.requested == [], f"the foreign host was asked for {foreign.requested}"
         assert feed.requested == ["/Products"]
+        assert "adventure_works__products" in said(capsys, caplog)
+        assert landed(lake) == {}, "a resource that failed landed rows"
+    finally:
+        foreign.server.shutdown()
+
+
+def _two_pages(feed: Feed, next_link: str) -> None:
+    feed.pages["/Products"] = (
+        200,
+        {"value": [product(1, "NL-0001", "One")], "@odata.nextLink": next_link},
+    )
+    feed.pages["/Products?$skiptoken=2"] = (200, {"value": [product(2, "NL-0002", "Two")]})
+
+
+def _landed_numbers(lake: Path) -> list[str]:
+    files = landed(lake)
+    assert set(files) == {"adventure_works__products"}, files
+    return sorted(r[2]["ProductNumber"] for r in rows(files["adventure_works__products"]))
+
+
+def test_relative_next_link_is_followed(feed, lake):
+    """ADR-0001: a relative @odata.nextLink is resolved against the page it came from and followed."""
+    _two_pages(feed, "Products?$skiptoken=2")
+
+    assert run({"adventure_works__products": f"{feed.base}/Products"}) == 0
+
+    assert feed.requested == ["/Products", "/Products?$skiptoken=2"]
+    assert _landed_numbers(lake) == ["NL-0001", "NL-0002"]
+
+
+def test_next_link_to_same_host_in_upper_case_is_followed(lake):
+    """ADR-0001: a next link to the feed's own host spelled in upper case is the same host, and is followed."""
+    feed = Feed()
+    try:
+        port = feed.server.server_port
+        _two_pages(feed, f"http://LOCALHOST:{port}/Products?$skiptoken=2")
+
+        assert run({"adventure_works__products": f"http://localhost:{port}/Products"}) == 0
+
+        assert feed.requested == ["/Products", "/Products?$skiptoken=2"]
+        assert _landed_numbers(lake) == ["NL-0001", "NL-0002"]
+    finally:
+        feed.server.shutdown()
+
+
+def test_next_link_with_explicit_default_port_is_followed(lake):
+    """ADR-0001: a next link naming the default port the feed URL leaves implicit is the same port, and is followed."""
+    try:
+        feed = Feed(port=80)
+    except OSError as error:
+        pytest.skip(f"cannot serve on port 80 here: {error}")
+    try:
+        _two_pages(feed, "http://127.0.0.1:80/Products?$skiptoken=2")
+
+        assert run({"adventure_works__products": "http://127.0.0.1/Products"}) == 0
+
+        assert feed.requested == ["/Products", "/Products?$skiptoken=2"]
+        assert _landed_numbers(lake) == ["NL-0001", "NL-0002"]
+    finally:
+        feed.server.shutdown()
+
+
+@pytest.mark.parametrize("redirected", ["/Products", "/Products?$skiptoken=2"])
+def test_redirect_to_another_host_fails_the_resource(feed, lake, capsys, caplog, redirected):
+    """ADR-0001: no request follows a redirect: a page answering 302 to another host fails the resource, and that host is never asked."""
+    foreign = Feed()
+    try:
+        foreign.pages["/Products"] = (200, {"value": [product(9, "RD-0009", "Foreign")]})
+        foreign.pages["/Products?$skiptoken=2"] = foreign.pages["/Products"]
+        _two_pages(feed, f"{feed.base}/Products?$skiptoken=2")
+        location = f"http://localhost:{foreign.server.server_port}{redirected}"
+        feed.pages[redirected] = (302, {}, {"Location": location})
+
+        code = run({"adventure_works__products": f"{feed.base}/Products"})
+
+        assert code != 0
+        assert foreign.requested == [], f"the redirect was followed to {foreign.requested}"
         assert "adventure_works__products" in said(capsys, caplog)
         assert landed(lake) == {}, "a resource that failed landed rows"
     finally:

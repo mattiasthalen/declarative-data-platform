@@ -12,6 +12,7 @@ declarations it touched.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 import pytest
@@ -102,6 +103,41 @@ def test_conform_refuses_jinja_in_physical_name(ws, where):
 )
 def test_conform_refuses_logic_beyond_its_own_value(ws, logic):
     """F19: a transformLogic that reads a file or another column is refused."""
+    edit(ws, CONTRACT_PATH, lambda c: _property(c, "product_line").update(transformLogic=logic))
+    refused(ws, "conform")
+
+
+GENERATED_CONFORM = f"models/conform/adventure_works/{CONTRACT}.sql"
+SQL_LITERAL = re.compile(r"'(?:[^']|'')*'")
+
+
+@pytest.mark.parametrize(
+    "logic",
+    [
+        "case when value in ('R','M') then trim(value) end",
+        "case when (value = '') then null else value end",
+        "replace(value, 'value', 'v')",
+        "trim(VALUE)",
+    ],
+)
+def test_conform_accepts_logic_over_its_own_value(ws, logic):
+    """F19: a transformLogic that rewrites only its own value is accepted, whatever the case of
+    ``value``; every ``value`` outside a literal is substituted and every literal is kept."""
+    edit(ws, CONTRACT_PATH, lambda c: _property(c, "product_line").update(transformLogic=logic))
+    accepted(ws, "conform")
+    sql = (ws.root / GENERATED_CONFORM).read_text()
+    for literal in SQL_LITERAL.findall(logic):
+        assert literal in sql, f"the literal {literal} of {logic!r} did not survive:\n{sql}"
+    bare = re.findall(r"\bvalue\b", SQL_LITERAL.sub("''", sql), flags=re.IGNORECASE)
+    assert bare == [], f"{logic!r} left {bare} unsubstituted:\n{sql}"
+
+
+@pytest.mark.parametrize(
+    "logic",
+    ["trim(value) --", "trim(value) /* x */", "trim(value) || 'abc"],
+)
+def test_conform_refuses_comments_and_unterminated_literals(ws, logic):
+    """F19: a transformLogic holding a comment or an unterminated literal is refused."""
     edit(ws, CONTRACT_PATH, lambda c: _property(c, "product_line").update(transformLogic=logic))
     refused(ws, "conform")
 

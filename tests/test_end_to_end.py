@@ -623,12 +623,17 @@ def _restated(product_id: int, number: str, *, later_first: bool) -> list[dict]:
 
 
 @pytest.fixture(scope="module")
-def business(make_workspace) -> Snapshot:
+def business_workspace(make_workspace) -> tuple[Workspace, Snapshot]:
     ws = make_workspace("business")
     ws.write_load(1, business_products())
     require(ws.generate())
     step = require(ws.build())
-    return ws.snapshot("built", step)
+    return ws, ws.snapshot("built", step)
+
+
+@pytest.fixture(scope="module")
+def business(business_workspace) -> Snapshot:
+    return business_workspace[1]
 
 
 def test_business_question(business):
@@ -690,6 +695,16 @@ def test_no_changed_at_no_identity(business):
     number = dimension_column(snap, "number")
     rows = snap.sql(f"select count(*) from serve__uss.product where {q(number)} in (?, ?)", list(numbers))
     assert rows == [(0,)]
+
+
+def test_contradiction_fails_the_build_new_row_first(business_workspace):
+    """ADR-0006: a load holding a held version and another value at the same ChangedAt fails the build,
+    with the new value's row first and the row repeating load 1 second."""
+    ws, _ = business_workspace
+    held = next(p for p in business_products() if p["ProductNumber"] == "BQ-101")
+    ws.write_load(2, [dict(held, Color="Purple"), held])
+    step = ws.build()
+    assert step.returncode != 0, f"the contradicting load built:\n{tail(step.output)}"
 
 
 # --------------------------------------------------------------------------- EC1
@@ -762,6 +777,31 @@ def test_recovery_after_failed_build(make_workspace):
             assert annexes(recovered, m, pid) == annexes(before, m, pid), m
     assert integrity_violations(recovered) == 0
 
+    # ADR-0007: a failing IntegrityViolations does not hold a batch open; it closes VIOLATIONS.
+    # No load produces a violation, so one annex row of SN-0002's name is duplicated by hand.
+    import duckdb
+
+    con = duckdb.connect(str(ws.warehouse))
+    try:
+        con.execute(
+            f"insert into integrate.{q(annex('NAM'))} select * from integrate.{q(annex('NAM'))} a "
+            f"where a.PR_NAM_ID in (select PR_NAM_ID from integrate.{q(posit('NAM'))} where PR_NAM_PR_ID = ?) "
+            "limit 1",
+            [pr_id(recovered, "SN-0002")],
+        )
+    finally:
+        con.close()
+    ws.write_load(3, [dict(first["SC-0001"], Color="Green", ModifiedDate=M2), first["SN-0002"]])
+    violated_step = ws.build()
+    violated = ws.snapshot("violated", violated_step)
+    assert integrity_violations(violated) > 0, "the duplicated annex row is not an integrity violation"
+    known = {b for b, _ in recovered.load_log()}
+    added = [b for b in violated.load_log() if b[0] not in known]
+    assert [status for _, status in added] == ["VIOLATIONS"], (
+        f"load log after the build: {violated.load_log()}\n{tail(violated_step.output)}"
+    )
+    assert [b for b in violated.load_log() if b[1] == "RUNNING"] == []
+
 
 # --------------------------------------------------------------------------- F3, F4
 #
@@ -771,6 +811,8 @@ def test_recovery_after_failed_build(make_workspace):
 #   l4  load 5, identical to load 2                           build
 #   l5  load 6: LC-0001 Green at D2                           build --exclude path:models/serve
 #   l6  no new files                                          build
+#   l7  load 7: LC-0002 twice at its held ChangedAt, its held
+#       Silver first, then Gold: a contradiction        build (must fail)
 
 
 def lifecycle_load(color: str, modified: str) -> list[dict]:
@@ -798,8 +840,10 @@ def lifecycle(make_workspace) -> Story:
     if not s.build("l4"):
         return s
     ws.write_load(6, lifecycle_load("Green", M2))
-    if s.build("l5", "--exclude", "path:models/serve"):
-        s.build("l6")
+    if s.build("l5", "--exclude", "path:models/serve") and s.build("l6"):
+        held = lifecycle_load("Green", M2)[1]
+        ws.write_load(7, [held, dict(held, Color="Gold")])
+        s.contradiction = ws.build()
     return s
 
 
@@ -825,6 +869,27 @@ def test_unchanged_loads_add_nothing(lifecycle):
     grown = {t: l5.count("integrate", t) - n for t, n in sizes["l4"].items()}
     assert grown == {t: int(t in (posit("COL"), annex("COL"))) for t in grown}
     assert latest(l5, "LC-0001", "COL") == "Green"
+
+
+def test_full_build_closes_running_batches(lifecycle):
+    """ADR-0007: a batch left RUNNING by a build that excluded serve is closed by the next build of all of serve."""
+    l5, l6 = lifecycle.snap("l5"), lifecycle.snap("l6")
+    assert "RUNNING" in [status for _, status in l5.load_log()], l5.load_log()
+    running = [b for b in l6.load_log() if b[1] == "RUNNING"]
+    assert running == [], f"batches still RUNNING after a full build: {running}"
+
+
+def _contradiction(story: Story):
+    step = getattr(story, "contradiction", None)
+    if step is None:
+        pytest.fail(f"the contradicting load was never built: {story.failure}")
+    return step
+
+
+def test_contradiction_fails_the_build_held_row_first(lifecycle):
+    """ADR-0006: two assertions of one version at one PositedAt fail the build, even when the first repeats the previous load."""
+    step = _contradiction(lifecycle)
+    assert step.returncode != 0, f"the contradicting load built:\n{tail(step.output)}"
 
 
 def test_serve_catches_up_after_skipped_build(lifecycle):
