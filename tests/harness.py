@@ -26,6 +26,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 RESOURCE = "adventure_works__products"
 CONTRACT = "adventure_works__products"
+# Contracts sit one folder per source, one file per resource (ADR-0014); the id stays CONTRACT.
+CONTRACT_PATH = "contracts/adventure_works/products.yaml"
 
 # Everything a fresh clone would not have.
 NOT_IN_A_CLONE = shutil.ignore_patterns(

@@ -18,9 +18,8 @@ from collections.abc import Callable
 import pytest
 import yaml
 
-from harness import CONTRACT, Workspace, require
+from harness import CONTRACT, CONTRACT_PATH, Workspace, require
 
-CONTRACT_PATH = f"contracts/{CONTRACT}.yaml"
 MODEL_PATH = "anchor/model.yaml"
 MAPPING_PATH = "anchor/mappings/PR_Product.yaml"
 

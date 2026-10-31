@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from harness import CONTRACT, Workspace, require
+from harness import CONTRACT, CONTRACT_PATH, Workspace, require
 
 
 def packages(ws: Workspace, layer: str) -> list[Path]:
@@ -68,7 +68,7 @@ def test_refuses_another_generators_folder(ws):
 def test_removed_contract_removes_its_files(ws):
     """EC9: removing a contract makes the next generate delete its generated files."""
     folder = products_package(ws)
-    (ws.root / "contracts" / f"{CONTRACT}.yaml").unlink()
+    (ws.root / CONTRACT_PATH).unlink()
     require(generate(ws, "conform"))
     left = [p.name for p in folder.glob("*") if p.name != "README.md"] if folder.exists() else []
     assert left == []
