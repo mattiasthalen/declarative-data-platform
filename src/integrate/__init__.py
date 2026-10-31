@@ -93,7 +93,10 @@ def checked(value, pattern: re.Pattern, what: str) -> str:
 
 
 def safe_yaml(path: Path) -> dict:
-    document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (yaml.YAMLError, UnicodeDecodeError) as error:
+        raise ModelError(f"{path} is not readable YAML: {error}") from error
     for text in texts(document):
         if JINJA.search(text):
             raise ModelError(f"{path}: {text!r} holds a Jinja delimiter")
@@ -610,12 +613,12 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
 
 
 def generate(*, check: bool = False) -> int:
-    """Write the models, or with ``check`` report drift: 0 clean, 1 drift, 2 invalid declarations."""
+    """Write the models, or with ``check`` report drift: 0 written or clean, 1 drift, 2 invalid declarations."""
     try:
         planned = packages(Path.cwd())
     except (ModelError, KeyError) as error:
         print(f"{MODEL}: {error}")
-        return 2 if check else 1
+        return 2
     return ownership.run(GENERATOR, f"{MODEL} and {MAPPINGS}/", planned, check=check)
 
 

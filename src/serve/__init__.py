@@ -157,12 +157,12 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
 
 
 def generate(*, check: bool = False) -> int:
-    """Write the models, or with ``check`` report drift: 0 clean, 1 drift, 2 invalid declarations."""
+    """Write the models, or with ``check`` report drift: 0 written or clean, 1 drift, 2 invalid declarations."""
     try:
         planned = packages(Path.cwd())
     except (integrate.ModelError, KeyError) as error:
         print(f"{integrate.MODEL}: {error}")
-        return 2 if check else 1
+        return 2
     return ownership.run(GENERATOR, f"{integrate.MODEL}", planned, check=check)
 
 
