@@ -95,7 +95,9 @@ def test_adr_0013_is_indexed_and_partly_supersedes_0012():
     assert "[0013](0013-" in (adr / "README.md").read_text()
     (adr_0012,) = adr.glob("0012-*.md")
     status = next(line for line in adr_0012.read_text().splitlines() if line.startswith("**Status:**"))
-    assert re.search(r"partly superseded by ADR-0013", status, re.IGNORECASE), status
+    assert re.search(
+        r"partly superseded by (ADR-0013\b|\[ADR-0013\]\(0013-[^)]*\.md\))", status, re.IGNORECASE
+    ), status
 
 
 def test_assumptions_a7_and_a8_are_recorded():

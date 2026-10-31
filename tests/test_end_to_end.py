@@ -88,7 +88,7 @@ def load_5() -> dict[str, dict]:
     return rows
 
 
-# The error the crt load raises on a contradiction (macros/anchor.sql, ADR-0006).
+# The error the crt load raises on a contradiction (macros/integrate/anchor.sql, ADR-0006).
 CONTRADICTION = "two different values for one version at one PositedAt"
 
 
