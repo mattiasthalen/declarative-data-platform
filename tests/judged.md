@@ -3,7 +3,7 @@
 Two edge cases are judged at review rather than run. The reviewer reads the
 generated output and the code, and records pass or fail for each line below.
 
-## EC6: two loads in the same second
+## EC6: two loads at one PositedAt
 
 Two loads that share a `_dlt__extracted_at` and carry different values for one
 version (same product, same attribute, same ChangedAt) are two assertions of one

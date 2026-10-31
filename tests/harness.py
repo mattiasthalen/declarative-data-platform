@@ -76,14 +76,20 @@ def product(
     *,
     color: str | None = "Silver",
     line: str | None = "M",
-    sell_start: str | None = "2011-05-31T00:00:00Z",
+    sell_start: str | None = "2011-05-31",
     sell_end: str | None = None,
     discontinued: str | None = None,
-    modified: str = "2014-02-08T00:00:00Z",
+    modified: str | None = "2014-02-08",
+    subcategory: int | None = 14,
+    model: int | None = 19,
 ) -> dict:
-    """An AdventureWorks Products row as the OData feed serves it."""
+    """An AdventureWorks Products row as the OData feed serves it.
+
+    The live shape (docs/assumptions.md, Measured): PascalCase names with ``Id``, not ``ID``,
+    and dates as plain ``YYYY-MM-DD``, ``ModifiedDate`` included.
+    """
     return {
-        "ProductID": product_id,
+        "ProductId": product_id,
         "Name": name,
         "ProductNumber": number,
         "MakeFlag": True,
@@ -101,12 +107,12 @@ def product(
         "ProductLine": line,
         "Class": None,
         "Style": None,
-        "ProductSubcategoryID": None,
-        "ProductModelID": None,
+        "ProductSubcategoryId": subcategory,
+        "ProductModelId": model,
         "SellStartDate": sell_start,
         "SellEndDate": sell_end,
         "DiscontinuedDate": discontinued,
-        "rowguid": str(uuid.UUID(int=product_id)),
+        "Rowguid": str(uuid.UUID(int=product_id)),
         "ModifiedDate": modified,
     }
 

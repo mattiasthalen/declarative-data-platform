@@ -10,6 +10,7 @@ snapshot of the warehouse after every build. The main story:
         "n/a" sell start, one product missing, one product new    build
     s5  loads 4 and 5 together: a colour B then back to A         build
     s6  a description in anchor/model.yaml changes      generate, build
+    s7  no new files                                    build --full-refresh
 """
 
 from __future__ import annotations
@@ -44,7 +45,7 @@ from harness import (
     tail,
 )
 
-M0, M1, M2 = "2014-02-08T00:00:00Z", "2014-03-01T00:00:00Z", "2014-04-01T00:00:00Z"
+M0, M1, M2 = "2014-02-08", "2014-03-01", "2014-04-01"
 D0, D1, D2 = "2014-02-08", "2014-03-01", "2014-04-01"
 L1, L2, L3, L4, L5 = (load_id(n) for n in range(1, 6))
 
@@ -53,12 +54,12 @@ def base_products() -> dict[str, dict]:
     return {
         "SC-0001": product(1, "SC-0001", "Colour Bike", color="Black", line="R "),
         "SN-0002": product(2, "SN-0002", "Alpha"),
-        "SE-0003": product(3, "SE-0003", "Ending Bike", sell_end="2013-05-29T00:00:00Z"),
+        "SE-0003": product(3, "SE-0003", "Ending Bike", sell_end="2013-05-29"),
         "SG-0004": product(4, "SG-0004", "Gone Bike"),
         "SX-0005": product(5, "SX-0005", "Cast Bike"),
         "SA-0006": product(6, "SA-0006", "ABA One Build", color="Blue"),
         "SB-0007": product(7, "SB-0007", "ABA Three Builds", color="Blue"),
-        "SS-0008": product(8, "SS-0008", "Steady Bike", discontinued="2015-01-01T00:00:00Z"),
+        "SS-0008": product(8, "SS-0008", "Steady Bike", discontinued="2015-01-01"),
     }
 
 
@@ -100,8 +101,8 @@ class Story:
             self.failure = f"{what} exited {step.returncode}:\n{tail(step.output)}"
         return step.returncode == 0
 
-    def build(self, label: str) -> bool:
-        step = self.ws.build()
+    def build(self, label: str, *args: str) -> bool:
+        step = self.ws.build(*args)
         if not self.ok(step, f"dbt build for {label}"):
             return False
         self.snaps[label] = self.ws.snapshot(label, step)
@@ -137,8 +138,8 @@ def story(make_workspace) -> Story:
     document = yaml.safe_load(model.read_text())
     assert _revise_first_description(document), "anchor/model.yaml has no description to revise"
     model.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True))
-    if s.generate():
-        s.build("s6")
+    if s.generate() and s.build("s6"):
+        s.build("s7", "--full-refresh")
     return s
 
 
@@ -365,6 +366,24 @@ def _description(row: dict) -> str:
     return (value or "").strip()
 
 
+# --------------------------------------------------------------------------- F1
+
+
+def _anchor_rows(snap: Snapshot) -> dict[str, list[tuple]]:
+    """Every row of the anchor, each posit and each annex, in a stable order."""
+    tables = ["PR_Product"] + [t for m in ATTRIBUTES for t in (posit(m), annex(m))]
+    return {t: snap.sql(f"select * from integrate.{q(t)} order by all") for t in tables}
+
+
+def test_full_refresh_keeps_integrate(story):
+    """F1: dbt build --full-refresh does not rebuild integrate: every anchor, posit and annex row stays as it was."""
+    s6, s7 = story.snap("s6"), story.snap("s7")
+    before, after = _anchor_rows(s6), _anchor_rows(s7)
+    assert all(before.values()), "the story left an empty integrate table to compare"
+    for table in before:
+        assert after[table] == before[table], table
+
+
 # --------------------------------------------------------------------------- AC16, AC17, AC23
 
 
@@ -522,8 +541,9 @@ def test_change_back(story):
 
 def business_products() -> list[dict]:
     """Products whose every version starts before D = 2013-06-01, so D falls in their one version."""
-    m = "2012-01-01T00:00:00Z"
-    early = "2011-05-31T00:00:00Z"
+    m = "2012-01-01"
+    early = "2011-05-31"
+    late = "2013-07-01"
     return [
         product(101, "BQ-101", "On sale R Black", line="R ", color="Black", sell_start=early, modified=m),
         product(
@@ -533,11 +553,11 @@ def business_products() -> list[dict]:
             line="R",
             color="Black",
             sell_start=early,
-            sell_end="2013-06-01T00:00:00Z",
+            sell_end="2013-06-01",
             modified=m,
         ),
         product(
-            103, "BQ-103", "Starts on D", line="R", color="Red", sell_start="2013-06-01T00:00:00Z", modified=m
+            103, "BQ-103", "Starts on D", line="R", color="Red", sell_start="2013-06-01", modified=m
         ),
         product(
             104,
@@ -545,7 +565,7 @@ def business_products() -> list[dict]:
             "Starts after D",
             line="M",
             color="Red",
-            sell_start="2013-06-02T00:00:00Z",
+            sell_start="2013-06-02",
             modified=m,
         ),
         product(
@@ -555,7 +575,7 @@ def business_products() -> list[dict]:
             line="M",
             color="Red",
             sell_start=early,
-            sell_end="2013-05-31T00:00:00Z",
+            sell_end="2013-05-31",
             modified=m,
         ),
         product(
@@ -565,7 +585,7 @@ def business_products() -> list[dict]:
             line="M",
             color="Red",
             sell_start=early,
-            discontinued="2013-06-01T00:00:00Z",
+            discontinued="2013-06-01",
             modified=m,
         ),
         product(
@@ -575,13 +595,31 @@ def business_products() -> list[dict]:
             line="M",
             color="Red",
             sell_start=early,
-            discontinued="2013-06-02T00:00:00Z",
+            discontinued="2013-06-02",
             modified=m,
         ),
         product(108, "BQ-108", "Null line", line=None, color="Silver", sell_start=early, modified=m),
         product(109, "BQ-109", "Blank line", line="  ", color="Silver", sell_start=early, modified=m),
         product(110, "BQ-110", "Null line and colour", line=None, color=None, sell_start=early, modified=m),
+        # F5: one product twice in the load, same values at two ChangedAts, in either row order.
+        # They go on sale after D, so the business question does not count them.
+        *_restated(201, "RS-201", later_first=True),
+        *_restated(202, "RS-202", later_first=False),
+        # F6: no usable ModifiedDate.
+        product(203, "NM-203", "No modified", line="T", color="White", sell_start=late, modified=None),
+        product(204, "NM-204", "Bad modified", line="T", color="White", sell_start=late, modified="n/a"),
     ]
+
+
+RESTATED_T1, RESTATED_T2 = "2012-01-01", "2012-06-01"
+
+
+def _restated(product_id: int, number: str, *, later_first: bool) -> list[dict]:
+    rows = [
+        product(product_id, number, "Restated", line="T", color="White", sell_start="2013-07-01", modified=t)
+        for t in (RESTATED_T1, RESTATED_T2)
+    ]
+    return rows[::-1] if later_first else rows
 
 
 @pytest.fixture(scope="module")
@@ -624,6 +662,34 @@ def test_business_question(business):
     assert snap.count("serve__uss", "_bridge") > 0
     assert latest(snap, "BQ-109", "LIN") == ""
     assert latest(snap, "BQ-108", "LIN") is None
+
+
+def test_restatement_within_one_load(business):
+    """F5: two rows of one product in one load with the same values at t1 < t2 give one posit at t1, in either row order."""
+    snap = business
+    for number in ("RS-201", "RS-202"):
+        pid = pr_id(snap, number)
+        for m in ("NUM", "NAM", "LIN", "COL", "SST"):
+            got = posits(snap, m, pid)
+            assert [d for _, _, d in got] == [RESTATED_T1], f"{number} {m}: {got}"
+            assert [r[3] for r in annexes(snap, m, pid)] == [1], f"{number} {m}: {annexes(snap, m, pid)}"
+        assert latest(snap, number, "COL") == "White"
+
+
+def test_no_changed_at_no_identity(business):
+    """F6: a product whose ModifiedDate is null, or fails its cast, gets no PR_Product identity and no dimension row."""
+    snap = business
+    numbers = ("NM-203", "NM-204")
+    value = q(attribute("NUM"))
+    posited = snap.sql(
+        f"select {value} from integrate.{q(posit('NUM'))} where {value} in (?, ?)", list(numbers)
+    )
+    assert posited == []
+    known = {r[0] for r in snap.sql(f"select {value} from integrate.{q(posit('NUM'))}")}
+    assert snap.count("integrate", "PR_Product") == len(known) == 12
+    number = dimension_column(snap, "number")
+    rows = snap.sql(f"select count(*) from serve__uss.product where {q(number)} in (?, ?)", list(numbers))
+    assert rows == [(0,)]
 
 
 # --------------------------------------------------------------------------- EC1
@@ -695,3 +761,93 @@ def test_recovery_after_failed_build(make_workspace):
         if m != "COL":
             assert annexes(recovered, m, pid) == annexes(before, m, pid), m
     assert integrity_violations(recovered) == 0
+
+
+# --------------------------------------------------------------------------- F3, F4
+#
+#   l1  load 1: LC-0001 Black at D0, LC-0002 steady          build
+#   l2  load 2: LC-0001 Red at D1                             build
+#   l3  loads 3 and 4, identical to load 2                    build
+#   l4  load 5, identical to load 2                           build
+#   l5  load 6: LC-0001 Green at D2                           build --exclude path:models/serve
+#   l6  no new files                                          build
+
+
+def lifecycle_load(color: str, modified: str) -> list[dict]:
+    return [
+        product(301, "LC-0001", "Changing Bike", color=color, modified=modified),
+        product(302, "LC-0002", "Steady Bike", color="Silver"),
+    ]
+
+
+@pytest.fixture(scope="module")
+def lifecycle(make_workspace) -> Story:
+    ws = make_workspace("lifecycle")
+    s = Story(ws)
+    ws.write_load(1, lifecycle_load("Black", M0))
+    if not (s.generate() and s.build("l1")):
+        return s
+    ws.write_load(2, lifecycle_load("Red", M1))
+    if not s.build("l2"):
+        return s
+    ws.write_load(3, lifecycle_load("Red", M1))
+    ws.write_load(4, lifecycle_load("Red", M1))
+    if not s.build("l3"):
+        return s
+    ws.write_load(5, lifecycle_load("Red", M1))
+    if not s.build("l4"):
+        return s
+    ws.write_load(6, lifecycle_load("Green", M2))
+    if s.build("l5", "--exclude", "path:models/serve"):
+        s.build("l6")
+    return s
+
+
+def test_unchanged_loads_add_nothing(lifecycle):
+    """F4: after one change, three identical loads add no posit or annex; a later change applies as one new version."""
+    l2, l3, l4, l5 = (lifecycle.snap(f"l{n}") for n in range(2, 6))
+    sizes = {
+        label: {t: snap.count("integrate", t) for m in ATTRIBUTES for t in (posit(m), annex(m))}
+        for label, snap in (("l2", l2), ("l3", l3), ("l4", l4))
+    }
+    assert sizes["l3"] == sizes["l2"]
+    assert sizes["l4"] == sizes["l2"]
+    pid = pr_id(l4, "LC-0001")
+    assert [(v, d) for _, v, d in posits(l4, "COL", pid)] == [("Black", D0), ("Red", D1)]
+    assert [(r[1], r[3]) for r in annexes(l4, "COL", pid)] == [(epoch_us(L1), 1), (epoch_us(L2), 1)]
+
+    assert [(v, d) for _, v, d in posits(l5, "COL", pid)] == [("Black", D0), ("Red", D1), ("Green", D2)]
+    assert [(r[1], r[3]) for r in annexes(l5, "COL", pid)] == [
+        (epoch_us(L1), 1),
+        (epoch_us(L2), 1),
+        (epoch_us(load_id(6)), 1),
+    ]
+    grown = {t: l5.count("integrate", t) - n for t, n in sizes["l4"].items()}
+    assert grown == {t: int(t in (posit("COL"), annex("COL"))) for t in grown}
+    assert latest(l5, "LC-0001", "COL") == "Green"
+
+
+def test_serve_catches_up_after_skipped_build(lifecycle):
+    """F3: a build that skipped serve after a change is picked up by the next build: the dimension shows the change."""
+    snap = lifecycle.snap("l6")
+    pid = str(pr_id(snap, "LC-0001"))
+    color = dimension_column(snap, "color")
+    versions = snap.sql(
+        "select cast(cast(product__valid_from as date) as varchar), "
+        f"cast(cast(product__valid_to as date) as varchar), {q(color)} from serve__uss.product "
+        "where split_part(_key__product, '|', 1) = ? order by 1",
+        [pid],
+    )
+    assert [(f, c) for f, _, c in versions] == [
+        ("0001-01-01", None),
+        (D0, "Black"),
+        (D1, "Red"),
+        (D2, "Green"),
+    ]
+    assert versions[-1][1] == "9999-12-31"
+    bridged = snap.sql(
+        "select count(*) from serve__uss._bridge b join serve__uss.product p using (_key__product) "
+        f"where split_part(p._key__product, '|', 1) = ? and p.{q(color)} = 'Green'",
+        [pid],
+    )
+    assert bridged[0][0] > 0, "the bridge has no row for the new version"

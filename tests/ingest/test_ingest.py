@@ -29,10 +29,12 @@ class Feed:
 
     def __init__(self):
         self.pages: dict[str, tuple[int, dict]] = {}
+        self.requested: list[str] = []
         feed = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
+                feed.requested.append(self.path)
                 status, body = feed.pages.get(self.path, (404, {"error": "no such page"}))
                 payload = json.dumps(body).encode()
                 self.send_response(status)
@@ -163,3 +165,25 @@ def test_unreachable_feed_changes_nothing(lake, capsys, caplog):
     assert "adventure_works__products" in said(capsys, caplog)
     assert sorted(p.relative_to(lake).as_posix() for p in lake.rglob("*")) == before
     assert existing.read_bytes() == b"PAR1 placeholder"
+
+
+def test_next_link_to_another_host_is_refused(feed, lake, capsys, caplog):
+    """F20: an @odata.nextLink to a host other than the feed's fails the resource and is never requested."""
+    foreign = Feed()
+    try:
+        foreign.pages["/Products?$skiptoken=2"] = (200, {"value": [product(3, "FX-0003", "Foreign")]})
+        foreign_link = f"http://localhost:{foreign.server.server_port}/Products?$skiptoken=2"
+        feed.pages["/Products"] = (
+            200,
+            {"value": [product(1, "FX-0001", "Home")], "@odata.nextLink": foreign_link},
+        )
+
+        code = run({"adventure_works__products": f"{feed.base}/Products"})
+
+        assert code == 1
+        assert foreign.requested == [], f"the foreign host was asked for {foreign.requested}"
+        assert feed.requested == ["/Products"]
+        assert "adventure_works__products" in said(capsys, caplog)
+        assert landed(lake) == {}, "a resource that failed landed rows"
+    finally:
+        foreign.server.shutdown()

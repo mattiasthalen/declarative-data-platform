@@ -100,3 +100,20 @@ def test_contract_trims_product_line():
     assert any(
         str(n["transformLogic"]).replace(" ", "") == "trim(value)" and "line" in str(n).lower() for n in logic
     ), logic
+
+
+def test_live_shape_is_read(staged):
+    """F14: the feed's live names (ProductId, Rowguid, ...Id) and plain YYYY-MM-DD dates all stage populated."""
+    snap, _ = staged
+    rows = snap.sql(
+        "select product_number, product_id, rowguid, product_subcategory_id, product_model_id, "
+        "cast(sell_start_date as varchar), cast(cast(modified_date as date) as varchar) "
+        f"from conform.{q(snap.staged())} order by product_number"
+    )
+    assert rows == [
+        ("CF-0001", 1, "00000000-0000-0000-0000-000000000001", 14, 19, "2011-05-31", "2014-02-08"),
+        ("CF-0002", 2, "00000000-0000-0000-0000-000000000002", 14, 19, "2011-05-31", "2014-02-08"),
+        ("CF-0003", 3, "00000000-0000-0000-0000-000000000003", 14, 19, "2011-05-31", "2014-02-08"),
+    ]
+    failed = snap.sql(f"select count(*) from conform.{q(snap.staged())} where len(_contract__cast_failed) > 0")
+    assert failed == [(0,)], "a plain-date value failed its cast"
