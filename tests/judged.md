@@ -44,3 +44,36 @@ Pass when all of these hold:
 3. Optional live confirmation: start `uv run dbt build --target dev`, and while
    it runs start a second one in another shell. The second fails with the lock
    error. The first completes and the load log shows one batch for it.
+
+# Judged checks for story #12
+
+## No rule stated twice (AC4, AC5, AC6)
+
+The six files are the root `CLAUDE.md` and `.claude/rules/{ingest,conform,integrate,serve,uss}.md`.
+The reviewer reads all six and `main`'s `CLAUDE.md` (from before the story), and records pass
+or fail for each line below with the table that supports it.
+
+Pass when all of these hold:
+
+1. **One home per rule (AC4).** List every rule stated in the six files, one row each, with
+   the file that states it. A rule is a constraint on how work is done, whatever its
+   wording: a reworded or partial restatement in a second file counts as the same rule.
+   Fail on any rule that appears in two files. A pointer that only names another file
+   ("see `.claude/rules/integrate.md`") is not a rule.
+2. **Layer files hold only their layer (AC4, AC6).** No rules file states something true of
+   every layer (generated output is committed, `__` separates concerns, one `dbt build` per
+   target, how to prove a change, read-first documents): those live in the root `CLAUDE.md`.
+   Each rules file states only what holds for files matching its own `paths:`. `serve.md`
+   states nothing specific to the USS (bridges, relationship steps, ghost rows), so it does
+   not mislead a hand-written serve model; `uss.md` holds those.
+3. **Every rule links its ADR (AC6).** Each rule in a rules file that an ADR decided links
+   that ADR (by number, as a link into `docs/adr/`). A rule with no deciding ADR is fine
+   unlinked; name it in the table so the reviewer's claim that no ADR exists is visible.
+4. **Nothing lost (AC5).** Map each bullet and each sentence-level rule of `main`'s
+   `CLAUDE.md` to its row in the table from (1). Fail on any that has no home. The one
+   permitted loss is the reference to Lars Rönnbäck's anchor-snowflake-skill;
+   `docs/ANCHOR.md` in Roenbaeck/anchor stays the integrate reference.
+   `! grep -rn anchor-snowflake-skill CLAUDE.md .claude/` exits 0
+   (`tests/test_rules_files.py` also checks this).
+5. **The router routes.** The root `CLAUDE.md` says that the layer rules live in
+   `.claude/rules/` and load by path, so a reader of the root file knows where the rest is.
