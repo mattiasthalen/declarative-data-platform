@@ -1,8 +1,9 @@
 """AC1-AC3, EC1-EC4: reading a file loads exactly its layers' rules files, through their patterns.
 
 Each case runs a headless ``claude -p`` session in a throwaway copy of the repo, makes it Read
-one file, and reads back what Claude Code reported to its ``InstructionsLoaded`` hook. The hook
-lives in a settings file passed with ``--settings``, so neither the working tree nor the user's
+one file, and reads back what Claude Code reported to its ``InstructionsLoaded`` hook, and to a
+``PostToolUse`` hook on Read that proves the file was read. The hooks live in a settings file
+passed with ``--settings``, so neither the working tree nor the user's
 Claude settings are touched. Run with ``uv run pytest -m claude``; the default run deselects it.
 """
 
@@ -36,10 +37,11 @@ CREATED_IN_THE_COPY = {
     "docs/anchor/notes.md": "# notes filed under a nested anchor folder\n",
 }
 
-# The parent session's identity and remote wiring; the child must start a session of its own.
+# The parent session's identity, wiring and behaviour switches; the child must start a plain
+# session of its own. Auth does not depend on any of these (checked live).
 PARENT_SESSION_ENV = re.compile(
-    r"^(CLAUDE_CODE_SESSION_ID|CLAUDECODE|CLAUDE_CODE_REMOTE.*|SESSION_INGRESS.*"
-    r"|CLAUDE_ADDITIONAL_DIRECTORIES)$"
+    r"^(CLAUDE_CODE_|CLAUDE_SESSION_|SESSION_INGRESS)"
+    r"|^(CLAUDECODE|CLAUDE_PID|CLAUDE_ADDITIONAL_DIRECTORIES)$"
 )
 
 
@@ -48,6 +50,7 @@ class Session:
     workspace: Path
     reply: str
     loads: list[dict]
+    reads: list[dict]
 
     def rules_loaded(self) -> dict[str, dict]:
         """The workspace's ``.claude/rules/<name>.md`` files reported loaded, by name."""
@@ -58,6 +61,18 @@ class Session:
             if path.parent == rules_dir and path.suffix == ".md":
                 loaded[path.stem] = load
         return loaded
+
+    def assert_read(self, relative: str) -> None:
+        # The hook cannot show a Read when no rules file matched; the PostToolUse log can.
+        target = (self.workspace / relative).resolve()
+        read = [
+            Path(self.workspace, r.get("tool_input", {}).get("file_path", "")).resolve()
+            for r in self.reads
+        ]
+        assert target in read, (
+            f"the session never read {relative}: PostToolUse(Read) logged {read}; "
+            f"reply was {self.reply!r}"
+        )
 
     def assert_root_claude_md_loaded(self) -> None:
         # Without this, a hook that stopped firing would pass every "not loaded" assertion.
@@ -86,7 +101,9 @@ def leaves_repo_and_user_settings_untouched():
     before = snapshot()
     yield
     after = snapshot()
-    assert after[0] == before[0], f"git status changed:\nbefore:\n{before[0]}\nafter:\n{after[0]}"
+    assert after[0] == before[0], (
+        f"git status changed:\nbefore:\n{before[0]}\nafter:\n{after[0]}"
+    )
     assert after[1] == before[1], f"{user_settings} changed during the live run"
 
 
@@ -106,18 +123,35 @@ def read_in_claude(workspace, tmp_path):
 
     def run(relative: str) -> Session:
         target = workspace / relative
-        assert target.is_file(), f"representative file {relative} is missing from the repo"
+        assert target.is_file(), (
+            f"representative file {relative} is missing from the repo"
+        )
         claude = shutil.which("claude")
         if claude is None:
-            pytest.fail("claude is not on PATH: the live rules test needs the Claude Code CLI")
+            pytest.fail(
+                "claude is not on PATH: the live rules test needs the Claude Code CLI"
+            )
 
-        log = tmp_path / "instructions_loaded.jsonl"
-        log.touch()
-        hook = f"cat >> {shlex.quote(str(log))}; echo >> {shlex.quote(str(log))}"
+        def appending_to(log: Path) -> list[dict]:
+            log.touch()
+            quoted = shlex.quote(str(log))
+            return [
+                {"type": "command", "command": f"cat >> {quoted}; echo >> {quoted}"}
+            ]
+
+        loads_log = tmp_path / "instructions_loaded.jsonl"
+        reads_log = tmp_path / "reads.jsonl"
         settings = tmp_path / "settings.json"
         settings.write_text(
             json.dumps(
-                {"hooks": {"InstructionsLoaded": [{"hooks": [{"type": "command", "command": hook}]}]}}
+                {
+                    "hooks": {
+                        "InstructionsLoaded": [{"hooks": appending_to(loads_log)}],
+                        "PostToolUse": [
+                            {"matcher": "Read", "hooks": appending_to(reads_log)}
+                        ],
+                    }
+                }
             )
         )
         prompt = (
@@ -145,7 +179,9 @@ def read_in_claude(workspace, tmp_path):
                 "json",
             ],
             cwd=workspace,
-            env={k: v for k, v in os.environ.items() if not PARENT_SESSION_ENV.match(k)},
+            env={
+                k: v for k, v in os.environ.items() if not PARENT_SESSION_ENV.match(k)
+            },
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -160,34 +196,40 @@ def read_in_claude(workspace, tmp_path):
             reply = json.loads(result.stdout).get("result", "")
         except json.JSONDecodeError:
             reply = result.stdout
-        loads = [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
-        # The reply proves the Read happened, which the hook cannot show when nothing matched.
-        opening = re.findall(r"\w+", target.read_text().splitlines()[0])[:3]
-        replied = set(re.findall(r"\w+", reply))
-        assert set(opening) <= replied, (
-            f"the session did not read {relative}: expected {opening} in its reply {reply!r}"
+        session = Session(
+            workspace=workspace,
+            reply=reply,
+            loads=json_lines(loads_log),
+            reads=json_lines(reads_log),
         )
-        session = Session(workspace=workspace, reply=reply, loads=loads)
+        session.assert_read(relative)
         session.assert_root_claude_md_loaded()
         return session
 
     return run
 
 
+def json_lines(log: Path) -> list[dict]:
+    return [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+
+
 def first_under(pattern: str) -> str:
     """The first file matching ``pattern`` in the repo, so the row survives files moving."""
-    found = sorted(p.relative_to(REPO).as_posix() for p in REPO.glob(pattern) if p.is_file())
+    found = sorted(
+        p.relative_to(REPO).as_posix() for p in REPO.glob(pattern) if p.is_file()
+    )
     assert found, f"no file in the repo matches {pattern}"
     return found[0]
 
 
 # The file a session reads -> exactly the rules files that must load. One row per pattern, so
-# a typo in any pattern fails a row.
+# a typo in any pattern fails a row. A ``glob:`` key is resolved by first_under() inside the
+# test, so a missing file fails its row rather than collection of the default run.
 EXPECTED_RULES = {
     "src/ingest/__init__.py": {"ingest"},  # **/ingest/**
     "src/conform/__init__.py": {"conform"},  # **/conform/**
-    first_under("contracts/**/*.yaml"): {"conform"},  # /contracts/**
-    first_under("models/raw/**/*.sql"): {"conform"},  # /models/raw/**
+    "glob:contracts/**/*.yaml": {"conform"},  # /contracts/**
+    "glob:models/raw/**/*.sql": {"conform"},  # /models/raw/**
     "src/integrate/__init__.py": {"integrate"},  # **/integrate/**
     "anchor/model.yaml": {"integrate"},  # /anchor/**
     "src/serve/__init__.py": {"serve", "uss"},  # **/serve/**, /src/serve/**
@@ -199,12 +241,15 @@ EXPECTED_RULES = {
 }
 
 
-@pytest.mark.parametrize("relative", EXPECTED_RULES)
-def test_reading_a_file_loads_exactly_its_rules(read_in_claude, relative):
+@pytest.mark.parametrize("row", EXPECTED_RULES)
+def test_reading_a_file_loads_exactly_its_rules(read_in_claude, row):
     """AC1-AC3, EC2: reading the file loads exactly the expected rules files, by path match."""
+    expected = EXPECTED_RULES[row]
+    relative = (
+        first_under(row.removeprefix("glob:")) if row.startswith("glob:") else row
+    )
     session = read_in_claude(relative)
     loaded = session.rules_loaded()
-    expected = EXPECTED_RULES[relative]
     assert set(loaded) == expected, (
         f"reading {relative} loaded {sorted(loaded)}, expected {sorted(expected)}"
     )
