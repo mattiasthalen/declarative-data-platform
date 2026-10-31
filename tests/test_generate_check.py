@@ -1,4 +1,4 @@
-"""`generate --check` and `task check` report drift and write nothing (story 2, D1: AC1-AC9, EC1-EC10).
+"""`generate --check` and `task check` report drift and write nothing (story 2, D1: AC1-AC9, EC1-EC11).
 
 Each test runs the generators as subprocesses, ``uv run <layer> generate --check`` or
 ``uv run task check``, in one shared copy of the repo, without a dbt build. The copy's
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -567,3 +568,54 @@ def test_missing_final_newline_only_drift_says_newline(ws):
     assert content.endswith(b"\n"), f"{rel(ws, target)} has no final newline to remove"
     target.write_bytes(content[:-1])
     _whitespace_drift_is_named(ws, target)
+
+
+# --------------------------------------------------------------------------- EC11
+
+
+def _check_raw(ws: Workspace, layer: str) -> Step:
+    """``check``, but with the output's bytes kept: ``Workspace.run`` reads text with universal
+    newlines, which would turn a carriage return in the diff into a line break and hide it."""
+    args = ("uv", "run", layer, "generate", "--check")
+    proc = subprocess.run(args, cwd=ws.root, env=ws.env(), capture_output=True, timeout=1800)
+    output = (proc.stdout + proc.stderr).decode("utf-8", errors="replace")
+    return Step(" ".join(args), args, proc.returncode, output)
+
+
+def test_crlf_with_a_real_edit_names_line_endings_and_diffs_only_the_edit(ws):
+    """EC11: a generated file rewritten with CRLF line endings and one line's text changed is
+    `changed` alone; a line under it names the line endings, and the diff shows the real edit with
+    no `-`/`+` line ending in a carriage return."""
+    target = generated_file(ws, "conform")
+    lines = target.read_text(encoding="utf-8").split("\n")
+    index = next((i for i in range(len(lines) - 1, -1, -1) if lines[i].strip()), None)
+    assert index is not None, f"{rel(ws, target)} has no non-blank line to edit"
+    original = lines[index]
+    lines[index] = f"{original} -- {EDIT_MARK}"
+    target.write_bytes("\n".join(lines).replace("\n", "\r\n").encode("utf-8"))
+
+    step = _check_raw(ws, "conform")
+    drifted(step, "conform")
+    path = rel(ws, target)
+    assert report(ws, step) == {("changed", path)}, step.output[-3000:]
+    under = section(step, ws, path)[1:]
+    assert any(re.search(r"line ending", line, re.IGNORECASE) for line in under), (
+        f"no line under {path} names the line endings:\n" + "\n".join(under)
+    )
+
+    raw = step.output.split("\n")
+    start = next(i for i, line in enumerate(raw) if (m := STATUS.match(line)) and normalize(ws, m.group(2)) == path)
+    raw_under = []
+    for line in raw[start + 1 :]:
+        if STATUS.match(line) or "task generate" in line:
+            break
+        raw_under.append(line)
+    diff = [line for line in raw_under if line.startswith(("-", "+")) and not line.startswith(("---", "+++"))]
+    carried = [line for line in diff if line.endswith("\r")]
+    assert not carried, f"diff lines under {path} end in a carriage return:\n" + "\n".join(map(repr, carried))
+    assert any(EDIT_MARK in line for line in diff), (
+        f"the diff under {path} does not show the edit:\n" + "\n".join(raw_under)
+    )
+    assert any(line[1:].rstrip("\r") == original for line in diff), (
+        f"the diff under {path} does not show the edited line's old text:\n" + "\n".join(raw_under)
+    )
