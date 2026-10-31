@@ -1,10 +1,10 @@
 """AC1-AC3, EC1-EC4: reading a file loads exactly its layers' rules files, through their patterns.
 
 Each case runs a headless ``claude -p`` session in a throwaway copy of the repo, makes it Read
-one file, and reads back what Claude Code reported to its ``InstructionsLoaded`` hook, and to a
-``PostToolUse`` hook on Read that proves the file was read. The hooks live in a settings file
-passed with ``--settings``, so neither the working tree nor the user's
-Claude settings are touched. Run with ``uv run pytest -m claude``; the default run deselects it.
+one file, and reads back what Claude Code reported to its ``InstructionsLoaded`` hook, and to
+a ``PostToolUse`` hook on Read that proves the file was read. The hooks live in a settings
+file passed with ``--settings``, so neither the working tree nor the user's Claude settings
+are touched. Run with ``uv run pytest -m claude``; the default run deselects it.
 """
 
 from __future__ import annotations
@@ -37,10 +37,15 @@ CREATED_IN_THE_COPY = {
     "docs/anchor/notes.md": "# notes filed under a nested anchor folder\n",
 }
 
-# The parent session's identity, wiring and behaviour switches; the child must start a plain
-# session of its own. Auth does not depend on any of these (checked live).
+# The parent session's identity and wiring; the child must start a plain session of its own.
+# Claude Code's own auth and provider variables (OAuth token, Bedrock/Vertex/Foundry switches,
+# client certificate, API key helper, skip-auth flags) also start CLAUDE_CODE_ and pass
+# through, so a child authenticated that way still authenticates.
 PARENT_SESSION_ENV = re.compile(
-    r"^(CLAUDE_CODE_|CLAUDE_SESSION_|SESSION_INGRESS)"
+    r"^CLAUDE_CODE_(?!"
+    r"OAUTH_|USE_(BEDROCK|VERTEX|FOUNDRY|ANTHROPIC_AWS|MANTLE)$"
+    r"|CLIENT_(CERT|KEY)|SKIP_\w+_AUTH$|API_KEY_HELPER)"
+    r"|^(CLAUDE_SESSION_|SESSION_INGRESS)"
     r"|^(CLAUDECODE|CLAUDE_PID|CLAUDE_ADDITIONAL_DIRECTORIES)$"
 )
 
