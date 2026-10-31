@@ -10,8 +10,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # A pull request's newer push replaces its older run; every commit on main keeps its verdict.
+  # A pull request's newer push replaces its older run; each commit pushed to main has a group
+  # of its own, so none of their runs is cancelled or replaced.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -29,6 +30,7 @@ jobs:
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.13.6"
+          download-from-astral-mirror: false
           python-version: "3.13"
           enable-cache: true
       - run: uv run task check
@@ -43,6 +45,7 @@ jobs:
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.13.6"
+          download-from-astral-mirror: false
           python-version: "3.13"
           enable-cache: true
       - run: uv run pytest
