@@ -15,6 +15,8 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A7 | CI needs no network beyond GitHub and the Python package index; nothing in `pytest` or `task check` calls the live source. | ci | A CI run fails on a connection error to a source host, or a test needs `demodata.grapecity.com`. |
 | A8 | The full suite runs on a GitHub-hosted runner in well under 15 minutes. | ci | The `test` job takes longer than 15 minutes, or hits its 30-minute timeout. |
 | A9 | The `main` ruleset is enforced: the repository is public, or its owner's plan includes rulesets on private repositories. | ci | Creating the ruleset is refused, or a pull request with a red `check` can be merged. |
+| A7 | Claude Code loads a `.claude/rules/*.md` file when the agent reads a file matching one of its `paths:` patterns, and reports it to the `InstructionsLoaded` hook. | harness | `uv run task test-rules` fails after a Claude Code update. |
+| A8 | Every file of a layer sits under a folder named after the layer, or under that layer's declarations (`contracts/`, `models/raw/`, `anchor/`). | harness | A layer's file is found outside them, and an agent edits it without its rules. |
 
 ## Measured (2026-10-30, the AdventureWorks OData feed)
 
