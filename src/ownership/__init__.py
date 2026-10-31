@@ -4,12 +4,16 @@ A generator owns a folder under ``models/<layer>/`` only when the folder holds a
 that the generator wrote. It rewrites its folders whole: files it no longer emits are
 removed, and a folder it no longer emits is removed with them. It refuses, before writing
 anything, any folder it would write that has no README or another generator's.
+
+With ``--check`` it writes nothing and reports the same changes as drift, byte for byte.
 """
 
 from __future__ import annotations
 
+import difflib
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 MODELS = Path("models")
@@ -51,8 +55,25 @@ def owned(root: Path, generator: str) -> set[Path]:
     }
 
 
-def write(root: Path, generator: str, source: str, packages: dict[Path, dict[str, str]]) -> None:
-    """Make ``packages`` (folder -> file name -> text) exactly what ``generator`` owns under models/."""
+@dataclass(frozen=True)
+class Drift:
+    """One path where the committed tree differs from what the generator writes.
+
+    ``changed`` and ``missing`` carry the text the generator writes; ``changed`` and stale
+    files carry the committed bytes. A stale folder carries neither.
+    """
+
+    kind: str  # changed | missing | stale
+    path: Path  # relative to the repo root
+    committed: bytes | None = None
+    generated: str | None = None
+
+
+def drift(root: Path, generator: str, source: str, packages: dict[Path, dict[str, str]]) -> list[Drift]:
+    """Every byte ``generator`` would change under models/ to make ``packages`` what it owns.
+
+    Raises Refused, before anything else, for a folder it would write but does not own.
+    """
     refused = [
         f"{folder} ({'no marker' if owner(root / folder) is None else 'owned by ' + owner(root / folder)})"
         for folder in sorted(packages)
@@ -61,28 +82,83 @@ def write(root: Path, generator: str, source: str, packages: dict[Path, dict[str
     if refused:
         raise Refused(f"{generator} does not own: " + ", ".join(refused))
 
-    for folder in sorted(owned(root, generator) - set(packages)):
-        shutil.rmtree(root / folder)
-
+    found = [Drift("stale", folder) for folder in sorted(owned(root, generator) - set(packages))]
     readme = marker(generator, source)
     for folder, files in sorted(packages.items()):
-        path = root / folder
-        path.mkdir(parents=True, exist_ok=True)
         wanted = {MARKER: readme, **files}
-        for existing in path.iterdir():
-            if existing.name not in wanted:
-                shutil.rmtree(existing) if existing.is_dir() else existing.unlink()
+        if (root / folder).is_dir():
+            for existing in sorted((root / folder).iterdir()):
+                if existing.name not in wanted:
+                    committed = existing.read_bytes() if existing.is_file() else None
+                    found.append(Drift("stale", folder / existing.name, committed=committed))
         for name, text in sorted(wanted.items()):
-            target = path / name
-            if not target.is_file() or target.read_text(encoding="utf-8") != text:
-                target.write_text(text, encoding="utf-8")
+            target = root / folder / name
+            if not target.is_file():
+                found.append(Drift("missing", folder / name, generated=text))
+            elif (committed := target.read_bytes()) != text.encode("utf-8"):
+                found.append(Drift("changed", folder / name, committed=committed, generated=text))
+    return sorted(found, key=lambda d: d.path.as_posix())
 
 
-def run(generator: str, source: str, packages: dict[Path, dict[str, str]]) -> int:
-    """Write ``packages`` from the current directory; report a refusal and return the exit code."""
+def apply(root: Path, drifts: list[Drift]) -> None:
+    """Remove every stale path and write every changed or missing file."""
+    for d in drifts:
+        target = root / d.path
+        if d.kind == "stale":
+            shutil.rmtree(target) if target.is_dir() else target.unlink()
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(d.generated.encode("utf-8"))
+
+
+DIFF_LINES = 40
+
+
+def describe(drifts: list[Drift]) -> str:
+    """The --check report: a line per drifted path, a capped diff under each changed file, a summary."""
+    out = []
+    for d in drifts:
+        out.append(f"{d.kind:<8} {d.path.as_posix()}")
+        if d.kind != "changed":
+            continue
+        try:
+            committed = d.committed.decode("utf-8")
+        except UnicodeDecodeError:
+            out.append("binary file, no diff shown")
+            continue
+        lines = [
+            line.rstrip("\r\n")
+            for line in difflib.unified_diff(
+                committed.splitlines(keepends=True),
+                d.generated.splitlines(keepends=True),
+                fromfile=f"committed/{d.path.as_posix()}",
+                tofile=f"generated/{d.path.as_posix()}",
+            )
+        ]
+        out.extend(lines[:DIFF_LINES])
+        if len(lines) > DIFF_LINES:
+            out.append(f"({len(lines) - DIFF_LINES} more diff lines left out)")
+    paths = "path differs" if len(drifts) == 1 else "paths differ"
+    out.append(f"{len(drifts)} {paths} from the declarations; run `task generate`")
+    return "\n".join(out)
+
+
+def run(generator: str, source: str, packages: dict[Path, dict[str, str]], *, check: bool = False) -> int:
+    """Write ``packages`` from the current directory, or with ``check`` report what writing would change.
+
+    Exit codes: 0 written or clean; 1 drift found by ``check``; a refused folder is 1 for a
+    write and 2 for a check, so a check tells broken input apart from drift.
+    """
+    root = Path.cwd()
     try:
-        write(Path.cwd(), generator, source, packages)
+        drifts = drift(root, generator, source, packages)
     except Refused as refusal:
         print(refusal, file=sys.stderr)
-        return 1
-    return 0
+        return 2 if check else 1
+    if not check:
+        apply(root, drifts)
+        return 0
+    if not drifts:
+        return 0
+    print(describe(drifts))
+    return 1
