@@ -1,0 +1,20 @@
+# How PR_Product is loaded: from which conform model, and each attribute from which
+# column. ChangedAt is the source's change time; PositedAt is the load's extraction time.
+anchor: PR
+source: adventure_works__products
+changed_at: modified_date
+attributes:
+  - attribute: NUM
+    column: product_number
+  - attribute: NAM
+    column: name
+  - attribute: LIN
+    column: product_line
+  - attribute: COL
+    column: color
+  - attribute: SST
+    column: sell_start_date
+  - attribute: SEN
+    column: sell_end_date
+  - attribute: DIS
+    column: discontinued_date

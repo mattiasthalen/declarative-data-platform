@@ -1,0 +1,23 @@
+version: 2
+models:
+- name: PR_Product
+  description: A product the business makes or buys, and may sell.
+- name: PR_NUM_Product_ProductNumber
+  description: The number that names one product across the business; its natural key.
+- name: PR_NAM_Product_Name
+  description: The product's name.
+- name: PR_LIN_Product_ProductLine
+  description: The product line, R road, M mountain, T touring or S standard; empty when the source has
+    none.
+- name: PR_COL_Product_Color
+  description: The product's colour.
+- name: PR_SST_Product_SellStart
+  description: The first day the product is on sale.
+- name: PR_SEN_Product_SellEnd
+  description: The last day the product is on sale.
+- name: PR_DIS_Product_Discontinued
+  description: The day the product was discontinued; it is no longer on sale from that day.
+- name: IntegrityViolations
+  description: Every integrity check of the model; empty when nothing is wrong.
+  data_tests:
+  - empty

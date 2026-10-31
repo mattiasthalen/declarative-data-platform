@@ -1,0 +1,9 @@
+version: 2
+models:
+- name: bridge__product
+  description: 'The staged bridge of product: its own keys, one row per version.'
+  columns:
+  - name: _key__product
+    data_tests:
+    - not_null
+    - unique

@@ -1,0 +1,19 @@
+version: "3"
+
+tasks:
+  generate:
+    desc: Regenerate the dbt models of every layer from the declarations
+    cmds:
+      - uv run conform generate
+      - uv run integrate generate
+      - uv run serve generate
+
+  ingest:
+    desc: Land every declared resource in the lake, one dlt pipeline each
+    cmds:
+      - uv run ingest
+
+  build:
+    desc: Build every layer into the target's DuckDB file (TARGET=dev by default)
+    cmds:
+      - uv run dbt build --target {{.TARGET | default "dev"}}
