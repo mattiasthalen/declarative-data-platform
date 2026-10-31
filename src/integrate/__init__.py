@@ -609,17 +609,19 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
     return {PACKAGE: files}
 
 
-def generate() -> int:
+def generate(*, check: bool = False) -> int:
+    """Write the models, or with ``check`` report drift: 0 clean, 1 drift, 2 invalid declarations."""
     try:
         planned = packages(Path.cwd())
     except (ModelError, KeyError) as error:
         print(f"{MODEL}: {error}")
-        return 1
-    return ownership.run(GENERATOR, f"{MODEL} and {MAPPINGS}/", planned)
+        return 2 if check else 1
+    return ownership.run(GENERATOR, f"{MODEL} and {MAPPINGS}/", planned, check=check)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog=GENERATOR, description=__doc__.splitlines()[0])
     parser.add_argument("command", choices=["generate"])
-    parser.parse_args()
-    return generate()
+    parser.add_argument("--check", action="store_true", help="write nothing; report drift and exit 1 if any")
+    args = parser.parse_args()
+    return generate(check=args.check)
