@@ -29,3 +29,4 @@ union all select * from {{ ref('ic_PR_DIS_Product_Discontinued_Posit') }}
 union all select * from {{ ref('ic_PR_DIS_Product_Discontinued_Annex') }}
 union all select * from {{ ref('ic_PR_DIS_Product_Discontinued') }}
 union all select * from {{ ref('ic_key_PR_Product_NUM') }}
+-- hand edit for the story 2 red proof
