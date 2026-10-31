@@ -96,7 +96,7 @@ def value_expression(prop: dict) -> str:
     parts = re.split(r"('(?:[^']|'')*')", logic)  # odd parts are string literals
     code = " ".join(parts[0::2])
     words = [(w.group(0).lower(), w.group(1)) for w in re.finditer(r"[A-Za-z_][A-Za-z0-9_]*(?=\s*(\()?)", code)]
-    if re.search(r";|--|/\*|'", code) or any(
+    if re.search(r";|--|/\*|['\"#$]", code) or any(
         name not in KEYWORDS and not (call and name in FUNCTIONS) for name, call in words
     ):
         raise ContractError(

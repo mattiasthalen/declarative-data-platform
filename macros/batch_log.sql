@@ -58,8 +58,8 @@ from {{ load_batch_log() }};
 
     {#- Serve rebuilds the identities that RUNNING batches touched, so a batch stays RUNNING
         until serve has read it: when any node errored or was skipped, or when the invocation
-        did not build every serve model. A failed test does not hold it: serve does not depend
-        on tests, and IntegrityViolations failing is what VIOLATIONS records. -#}
+        did not build every serve model. A failed test holds it only through the serve models it
+        skips; a failing IntegrityViolations skips none, and VIOLATIONS records it. -#}
     {%- set unfinished = results | selectattr('status', 'in', ['error', 'skipped']) | list -%}
     {%- set built = results | selectattr('status', 'equalto', 'success') | map(attribute='node.unique_id') | list -%}
     {%- set unserved = [] -%}

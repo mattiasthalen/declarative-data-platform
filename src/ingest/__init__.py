@@ -14,7 +14,7 @@ import os
 import sys
 from collections.abc import Iterator, Mapping
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin
 
 FEED = "https://demodata.grapecity.com/adventureworks/odata/v1"
 
@@ -38,9 +38,18 @@ def lake_root() -> Path:
 
 
 def origin(url: str) -> tuple[str, str, int | None]:
-    """The scheme, host and port a URL reaches, the port spelled out when it is the default."""
-    parts = urlsplit(url)
-    return parts.scheme.lower(), (parts.hostname or "").lower(), parts.port or DEFAULT_PORTS.get(parts.scheme.lower())
+    """The scheme, host and port a URL reaches, the port spelled out when it is the default.
+
+    Read the way urllib3 reads it, since urllib3 sends the request; a backslash, which parsers
+    split differently, is refused outright.
+    """
+    from urllib3.util import parse_url
+
+    if "\\" in url:
+        raise ValueError(f"{url} holds a backslash")
+    parts = parse_url(url)
+    scheme = (parts.scheme or "").lower()
+    return scheme, (parts.host or "").lower(), parts.port or DEFAULT_PORTS.get(scheme)
 
 
 def odata_rows(url: str) -> Iterator[dict]:
