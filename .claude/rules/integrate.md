@@ -1,7 +1,7 @@
 ---
 paths:
   - "**/integrate/**"
-  - "anchor/**"
+  - "/anchor/**"
 ---
 
 # Integrate rules

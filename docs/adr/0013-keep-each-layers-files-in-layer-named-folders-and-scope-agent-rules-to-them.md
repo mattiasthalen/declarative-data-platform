@@ -5,7 +5,8 @@
 ## Context
 
 ADR-0012 lays the repo out by kind, so one layer spans several folders (conform is `contracts/`,
-`src/conform/`, `models/raw/`, `models/conform/`), and it kept every macro flat in `macros/`.
+`src/conform/`, `models/raw/`, `models/conform/`), and it kept the layer macros at the root of
+`macros/` and the generic test macros in `macros/tests/`.
 Agents working in the repo need each layer's rules when, and only when, they touch that layer's
 files. Claude Code loads a nested CLAUDE.md for the folder a file sits in, and a
 `.claude/rules/*.md` file whenever a file matching one of its `paths:` patterns is read.
@@ -15,11 +16,12 @@ files. Claude Code loads a nested CLAUDE.md for the folder a file sits in, and a
 A layer's files live in folders named after the layer: `src/<layer>/`, `models/<layer>/`,
 `macros/<layer>/`, `tests/<layer>/`, plus the declarations (`contracts/` and `models/raw/` for
 conform, `anchor/` for integrate). Only macros serving every layer (`generate_schema_name.sql`) stay
-at the root of `macros/`.
+at the root of `macros/`; a generic test macro goes with the layer that uses it.
 
 Each layer's agent rules live in one `.claude/rules/<layer>.md`, scoped by `paths:` patterns on
-those folder names (`**/conform/**`, `contracts/**`, `models/raw/**`). The USS has its own
-`uss.md` inside serve, because serve also holds hand-written models. The root CLAUDE.md routes to
+those folder names (`**/conform/**`), with a leading `/` for a folder that exists only at the root
+(`/contracts/**`, `/models/raw/**`). The USS has its own `uss.md`: everything in serve but its
+hand-written models, which get only `serve.md`. The root CLAUDE.md routes to
 them and holds only what is true everywhere.
 
 Rejected: a nested CLAUDE.md in each layer folder, which needs a pointer file per folder and cannot

@@ -16,10 +16,10 @@ themselves when you read a file of that layer:
 
 | layer | its folders | its rules |
 |---|---|---|
-| ingest | `src/ingest/`, `tests/ingest/` | `.claude/rules/ingest.md` |
-| conform | `contracts/`, `models/raw/`, `**/conform/` | `.claude/rules/conform.md` |
-| integrate | `anchor/`, `**/integrate/` | `.claude/rules/integrate.md` |
-| serve | `**/serve/` | `.claude/rules/serve.md`, and `.claude/rules/uss.md` for the USS |
+| ingest | `**/ingest/` | `.claude/rules/ingest.md` |
+| conform | `**/conform/`, `contracts/`, `models/raw/` | `.claude/rules/conform.md` |
+| integrate | `**/integrate/`, `anchor/` | `.claude/rules/integrate.md` |
+| serve | `**/serve/` | `.claude/rules/serve.md`, and `.claude/rules/uss.md` for all but the hand-written models |
 
 `**/<layer>/` means that layer's folder under `src/`, `models/`, `macros/` and `tests/`. A new
 file of a layer goes in one of its folders, or its rules will not reach the next agent (A8).
