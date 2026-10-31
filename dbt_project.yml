@@ -1,0 +1,32 @@
+name: declarative_data_platform
+version: "0.1.0"
+config-version: 2
+profile: declarative_data_platform
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["data_tests"]
+clean-targets: ["target"]
+
+# The batch log brackets every invocation: a batch opens before the first model and
+# closes after the last (ADR-0007). An invocation that writes no Anchor row leaves none.
+on-run-start:
+  - "{{ open_batch() }}"
+on-run-end:
+  - "{{ close_batch(results) }}"
+
+models:
+  declarative_data_platform:
+    raw:
+      +schema: raw
+      +materialized: view
+    conform:
+      +schema: conform
+      +materialized: incremental
+    integrate:
+      +schema: integrate
+    serve:
+      uss_staging:
+        +schema: serve__uss_staging
+      uss:
+        +schema: serve__uss
