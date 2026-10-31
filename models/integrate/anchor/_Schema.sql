@@ -1,0 +1,17 @@
+-- Every version of the Anchor model this database has held, as JSON (ADR-0008).
+{{ config(materialized='incremental') }}
+{% raw %}
+with model as (
+    select cast('{"schema":{"format":"0.99","metadata":{"temporalization":"crt","databaseTarget":"DuckDB","changingRange":"timestamp","encapsulation":"integrate","identity":"int","metadataPrefix":"Metadata","metadataType":"int","metadataUsage":"true","changingSuffix":"ChangedAt","identitySuffix":"ID","positIdentity":"int","positGenerator":"true","positingRange":"timestamp","positingSuffix":"PositedAt","positorRange":"tinyint","positorSuffix":"Positor","reliabilityRange":"tinyint","reliabilitySuffix":"Reliability","reliableCutoff":"1","deleteReliability":"0","reliableSuffix":"Reliable","partitioning":"false","entityIntegrity":"true","restatability":"false","idempotency":"true","assertiveness":"false","decisiveness":"true","naming":"improved","positSuffix":"Posit","annexSuffix":"Annex","chronon":"timestamp","now":"now()"},"description":"The business information model of the declarative data platform.","knot":{},"anchor":{"PR":{"descriptor":"Product","identity":"int","metadata":{"capsule":"integrate","generator":"true"},"description":"A product the business makes or buys, and may sell.","identifier":[{"route":"NUM"}],"attributes":["NUM","NAM","LIN","COL","SST","SEN","DIS"],"attribute":{"NUM":{"descriptor":"ProductNumber","dataRange":"varchar(25)","timeRange":"timestamp","metadata":{"capsule":"integrate","restatable":"false","idempotent":"true","assertive":"false"},"description":"The number that names one product across the business; its natural key.","key":[{"stop":"1","route":"NUM","of":"PR","branch":"1"}]},"NAM":{"descriptor":"Name","dataRange":"varchar(50)","timeRange":"timestamp","metadata":{"capsule":"integrate","restatable":"false","idempotent":"true","assertive":"false"},"description":"The product''s name."},"LIN":{"descriptor":"ProductLine","dataRange":"varchar(2)","timeRange":"timestamp","metadata":{"capsule":"integrate","restatable":"false","idempotent":"true","assertive":"false"},"description":"The product line, R road, M mountain, T touring or S standard; empty when the source has none."},"COL":{"descriptor":"Color","dataRange":"varchar(15)","timeRange":"timestamp","metadata":{"capsule":"integrate","restatable":"false","idempotent":"true","assertive":"false"},"description":"The product''s colour."},"SST":{"descriptor":"SellStart","dataRange":"date","timeRange":"timestamp","metadata":{"capsule":"integrate","restatable":"false","idempotent":"true","assertive":"false"},"description":"The first day the product is on sale."},"SEN":{"descriptor":"SellEnd","dataRange":"date","timeRange":"timestamp","metadata":{"capsule":"integrate","restatable":"false","idempotent":"true","assertive":"false"},"description":"The last day the product is on sale."},"DIS":{"descriptor":"Discontinued","dataRange":"date","timeRange":"timestamp","metadata":{"capsule":"integrate","restatable":"false","idempotent":"true","assertive":"false"},"description":"The day the product was discontinued; it is no longer on sale from that day."}}}},"nexus":{},"tie":{}}}' as json) as schema
+)
+{% endraw %}
+select
+    cast({% if is_incremental() %}(select coalesce(max(version), 0) from {{ this }}){% else %}0{% endif %} + 1 as integer) as version,
+    cast(now() as timestamp) as activation,
+    schema
+from model
+{% if is_incremental() %}
+where cast(schema as varchar) is distinct from (
+    select cast(schema as varchar) from {{ this }} order by version desc limit 1
+)
+{% endif %}
