@@ -1,4 +1,4 @@
-"""AC1-AC3, EC1, EC3, EC4: Claude Code loads each layer's rules file, and only it.
+"""AC1-AC3, EC1-EC4: reading a file loads exactly its layers' rules files, through their patterns.
 
 Each case runs a headless ``claude -p`` session in a throwaway copy of the repo, makes it Read
 one file, and reads back what Claude Code reported to its ``InstructionsLoaded`` hook. The hook
@@ -9,6 +9,7 @@ Claude settings are touched. Run with ``uv run pytest -m claude``; the default r
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import shutil
@@ -22,13 +23,24 @@ from harness import REPO
 
 pytestmark = pytest.mark.claude
 
-RULES = ("ingest", "conform", "integrate", "serve", "uss")
 MODEL = "haiku"
 SESSION_TIMEOUT = 300
 
-# A file under models/serve/ outside the USS folders, which no generator owns.
-HAND_WRITTEN_SERVE = "models/serve/marts/hand_written_orders.sql"
-HAND_WRITTEN_SERVE_TEXT = "-- hand-written serve model, outside the USS\nselect 1 as one\n"
+# Files the copy gains, which the repo does not hold: path -> text.
+CREATED_IN_THE_COPY = {
+    # Under models/serve/ outside the USS folders, which no generator owns.
+    "models/serve/marts/hand_written_orders.sql": (
+        "-- hand-written serve model, outside the USS\nselect 1 as one\n"
+    ),
+    # A folder named anchor that is not the root's: /anchor/** must not match it.
+    "docs/anchor/notes.md": "# notes filed under a nested anchor folder\n",
+}
+
+# The parent session's identity and remote wiring; the child must start a session of its own.
+PARENT_SESSION_ENV = re.compile(
+    r"^(CLAUDE_CODE_SESSION_ID|CLAUDECODE|CLAUDE_CODE_REMOTE.*|SESSION_INGRESS.*"
+    r"|CLAUDE_ADDITIONAL_DIRECTORIES)$"
+)
 
 
 @dataclass
@@ -81,9 +93,10 @@ def leaves_repo_and_user_settings_untouched():
 @pytest.fixture(scope="module")
 def workspace(make_workspace, leaves_repo_and_user_settings_untouched) -> Path:
     ws = make_workspace("rules_load", sync=False)
-    hand_written = ws.root / HAND_WRITTEN_SERVE
-    hand_written.parent.mkdir(parents=True, exist_ok=True)
-    hand_written.write_text(HAND_WRITTEN_SERVE_TEXT)
+    for relative, text in CREATED_IN_THE_COPY.items():
+        created = ws.root / relative
+        created.parent.mkdir(parents=True, exist_ok=True)
+        created.write_text(text)
     return ws.root
 
 
@@ -120,14 +133,19 @@ def read_in_claude(workspace, tmp_path):
                 MODEL,
                 "--settings",
                 str(settings),
-                "--allowedTools",
+                "--setting-sources",
+                "project",
+                "--tools",
                 "Read",
+                "--strict-mcp-config",
+                "--no-session-persistence",
                 "--max-turns",
                 "4",
                 "--output-format",
                 "json",
             ],
             cwd=workspace,
+            env={k: v for k, v in os.environ.items() if not PARENT_SESSION_ENV.match(k)},
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -156,58 +174,42 @@ def read_in_claude(workspace, tmp_path):
     return run
 
 
-def assert_loaded_by_reading(session: Session, rules: str, relative: str) -> None:
-    loaded = session.rules_loaded()
-    assert rules in loaded, (
-        f"reading {relative} did not load .claude/rules/{rules}.md; loaded: {sorted(loaded)}"
-    )
-    load = loaded[rules]
-    assert load.get("load_reason") == "path_glob_match", load
-    trigger = Path(load.get("trigger_file_path", "")).resolve()
-    assert trigger == (session.workspace / relative).resolve(), load
+def first_under(pattern: str) -> str:
+    """The first file matching ``pattern`` in the repo, so the row survives files moving."""
+    found = sorted(p.relative_to(REPO).as_posix() for p in REPO.glob(pattern) if p.is_file())
+    assert found, f"no file in the repo matches {pattern}"
+    return found[0]
 
 
-LAYER_FILES = {
-    "ingest": "src/ingest/__init__.py",
-    "conform": "src/conform/__init__.py",
-    "integrate": "anchor/model.yaml",
-    "serve": "src/serve/__init__.py",
+# The file a session reads -> exactly the rules files that must load. One row per pattern, so
+# a typo in any pattern fails a row.
+EXPECTED_RULES = {
+    "src/ingest/__init__.py": {"ingest"},  # **/ingest/**
+    "src/conform/__init__.py": {"conform"},  # **/conform/**
+    first_under("contracts/**/*.yaml"): {"conform"},  # /contracts/**
+    first_under("models/raw/**/*.sql"): {"conform"},  # /models/raw/**
+    "src/integrate/__init__.py": {"integrate"},  # **/integrate/**
+    "anchor/model.yaml": {"integrate"},  # /anchor/**
+    "src/serve/__init__.py": {"serve", "uss"},  # **/serve/**, /src/serve/**
+    "macros/serve/uss.sql": {"serve", "uss"},  # /macros/serve/**
+    "models/serve/uss/product.sql": {"serve", "uss"},  # /models/serve/uss*/**
+    "models/serve/marts/hand_written_orders.sql": {"serve"},  # AC2: not uss
+    "docs/lexicon.md": set(),  # AC3
+    "docs/anchor/notes.md": set(),  # /anchor/** is anchored at the root
 }
 
 
-@pytest.mark.parametrize("layer", LAYER_FILES)
-def test_a_layer_file_loads_its_layers_rules_only(read_in_claude, layer):
-    """AC1: reading a file of the layer loads its rules file and no other layer's."""
-    relative = LAYER_FILES[layer]
+@pytest.mark.parametrize("relative", EXPECTED_RULES)
+def test_reading_a_file_loads_exactly_its_rules(read_in_claude, relative):
+    """AC1-AC3, EC2: reading the file loads exactly the expected rules files, by path match."""
     session = read_in_claude(relative)
-    assert_loaded_by_reading(session, layer, relative)
-    others = {"ingest", "conform", "integrate", "serve"} - {layer}
-    if layer != "serve":
-        others.add("uss")
-    stray = sorted(others & session.rules_loaded().keys())
-    assert not stray, f"reading {relative} also loaded other layers' rules: {stray}"
-
-
-def test_a_uss_file_loads_serve_and_uss_rules(read_in_claude):
-    """AC2: a USS model loads both serve.md and uss.md."""
-    relative = "models/serve/uss/product.sql"
-    session = read_in_claude(relative)
-    assert_loaded_by_reading(session, "serve", relative)
-    assert_loaded_by_reading(session, "uss", relative)
-    stray = sorted({"ingest", "conform", "integrate"} & session.rules_loaded().keys())
-    assert not stray, f"reading {relative} also loaded: {stray}"
-
-
-def test_a_hand_written_serve_file_loads_serve_rules_not_uss(read_in_claude):
-    """AC2: a serve model outside the USS folders loads serve.md and not uss.md."""
-    session = read_in_claude(HAND_WRITTEN_SERVE)
-    assert_loaded_by_reading(session, "serve", HAND_WRITTEN_SERVE)
-    stray = sorted({"ingest", "conform", "integrate", "uss"} & session.rules_loaded().keys())
-    assert not stray, f"reading {HAND_WRITTEN_SERVE} also loaded: {stray}"
-
-
-def test_a_general_file_loads_no_layer_rules(read_in_claude):
-    """AC3: reading docs/lexicon.md loads no layer rules file."""
-    session = read_in_claude("docs/lexicon.md")
-    loaded = sorted(session.rules_loaded())
-    assert not loaded, f"reading docs/lexicon.md loaded layer rules: {loaded}"
+    loaded = session.rules_loaded()
+    expected = EXPECTED_RULES[relative]
+    assert set(loaded) == expected, (
+        f"reading {relative} loaded {sorted(loaded)}, expected {sorted(expected)}"
+    )
+    for rules in expected:
+        load = loaded[rules]
+        assert load.get("load_reason") == "path_glob_match", load
+        trigger = Path(load.get("trigger_file_path", "")).resolve()
+        assert trigger == (session.workspace / relative).resolve(), load

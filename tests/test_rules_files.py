@@ -44,9 +44,10 @@ def test_each_layer_macro_lives_under_its_layer():
         assert found[0].startswith(f"macros/{layer}/"), f"{name} is at {found[0]}"
 
 
-def collect(*args: str) -> subprocess.CompletedProcess:
+def collect(*args: str, strict_markers: bool = True) -> subprocess.CompletedProcess:
+    strict = ["--strict-markers"] if strict_markers else []
     return subprocess.run(
-        [sys.executable, "-m", "pytest", "--collect-only", "-q", "--strict-markers", *args, LIVE_TEST],
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", *strict, *args, LIVE_TEST],
         cwd=REPO,
         capture_output=True,
         text=True,
@@ -63,20 +64,21 @@ def test_the_default_run_deselects_the_live_tests():
 
 
 def test_the_claude_marker_selects_the_live_tests():
-    """AC8: -m claude collects the live tests, and the marker is registered."""
+    """AC8: -m claude collects the live tests; --strict-markers proves the marker registered."""
     result = collect("-m", "claude")
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
     assert f"{LIVE_TEST}::" in output, output
 
 
-def test_the_claude_marker_is_registered():
-    """AC8: pyproject registers the claude marker, so --strict-markers stays clean."""
-    import tomllib
-
-    config = tomllib.loads((REPO / "pyproject.toml").read_text())
-    markers = config["tool"]["pytest"]["ini_options"].get("markers", [])
-    assert any(re.match(r"claude\b", marker) for marker in markers), markers
+def test_another_mark_expression_does_not_select_the_live_tests():
+    """AC12: a -m that does not name claude, like "not nonexistent", still deselects them."""
+    # --strict-markers would refuse the unregistered marker before collecting anything.
+    result = collect("-m", "not nonexistent", strict_markers=False)
+    output = result.stdout + result.stderr
+    assert result.returncode in (0, 5), output
+    assert f"{LIVE_TEST}::" not in output, output
+    assert "deselected" in output, output
 
 
 def test_task_test_rules_runs_the_claude_marked_tests():

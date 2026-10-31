@@ -1,5 +1,6 @@
 """Fixtures shared by every S1 test. The helpers live in ``harness.py``, beside this file."""
 
+import re
 import shutil
 
 import pytest
@@ -21,3 +22,25 @@ def make_workspace(tmp_path_factory):
         return ws
 
     return make
+
+
+def _names_claude_positively(markexpr: str) -> bool:
+    """True when ``-m`` names ``claude`` other than as ``not claude``."""
+    return any(
+        not re.search(r"\bnot\s*\(?\s*$", markexpr[: match.start()])
+        for match in re.finditer(r"\bclaude\b", markexpr)
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """AC8, AC12: the live tests run only when ``-m`` asks for ``claude`` by name.
+
+    An ``addopts -m 'not claude'`` would not do: pytest keeps only the last ``-m``, so
+    ``-m "not e2e"`` would bring the live tests back.
+    """
+    if _names_claude_positively(config.option.markexpr or ""):
+        return
+    live = [item for item in items if item.get_closest_marker("claude")]
+    if live:
+        items[:] = [item for item in items if not item.get_closest_marker("claude")]
+        config.hook.pytest_deselected(items=live)
