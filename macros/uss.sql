@@ -31,9 +31,10 @@ where split_part(_key__{{ e.entity }}, '|', 1) in (
 
 
 {#- The CTEs ending in `versions` (id, valid_from, valid_to, _key): one row per version of each
-    identity, from an opening version at 0001-01-01 to each change of any attribute, as positor 0
-    states it now. Per attribute a CTE named for its prefix holds the reliable posits (id,
-    changed_at, value) to ASOF-join on. -#}
+    identity, a new one at each change of any attribute, as positor 0 states it now. Per attribute
+    a CTE named for its prefix holds the reliable posits (id, changed_at, value) to ASOF-join on,
+    its earliest posit moved back to 0001-01-01: the first value seen is taken to have held since
+    the beginning, so no version is all null (ADR-0011). -#}
 {% macro uss_versions(e) -%}
 identities as (
     select "{{ e.anchor_mnemonic }}_ID" as id
@@ -47,7 +48,12 @@ identities as (
 {{ t.prefix | lower }} as (
     select
         "{{ t.prefix }}_{{ e.anchor_mnemonic }}_ID" as id,
-        "{{ t.prefix }}_ChangedAt" as changed_at,
+        case
+            when row_number() over (
+                partition by "{{ t.prefix }}_{{ e.anchor_mnemonic }}_ID" order by "{{ t.prefix }}_ChangedAt"
+            ) = 1 then cast('0001-01-01' as timestamp)
+            else cast("{{ t.prefix }}_ChangedAt" as timestamp)
+        end as changed_at,
         "{{ t.name }}" as value
     from ({{ anchor_latest({'mnemonic': t.prefix, 'name': t.name}) }})
     where "{{ t.prefix }}_{{ e.anchor_mnemonic }}_ID" in (select id from identities)
@@ -55,10 +61,9 @@ identities as (
 {%- endfor %}
 
 boundaries as (
-    select id, cast('0001-01-01' as timestamp) as valid_from from identities
     {%- for t in e.attributes %}
-    union
-    select id, cast(changed_at as timestamp) from {{ t.prefix | lower }}
+    {% if not loop.first %}union
+    {% endif %}select id, changed_at as valid_from from {{ t.prefix | lower }}
     {%- endfor %}
 ),
 

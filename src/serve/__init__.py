@@ -82,8 +82,8 @@ def dimension(anchor, attributes) -> str:
         for ghost, values in ghosts.items()
     )
     return (
-        f"-- The {entity} dimension: one row per version on business time, from an opening version at\n"
-        f"-- 0001-01-01, plus the ghost rows {NOT_AVAILABLE} and {NOT_APPLICABLE}.\n"
+        f"-- The {entity} dimension: one row per version on business time, the first from 0001-01-01,\n"
+        f"-- plus the ghost rows {NOT_AVAILABLE} and {NOT_APPLICABLE}.\n"
         + header(anchor, attributes)
         + "with {{ uss_versions(e) }}\n"
         "select\n" + ",\n".join(columns) + "\nfrom versions v\n" + joins + "\n"

@@ -28,13 +28,14 @@ uv run task build                   # build warehouse/dev.duckdb (TARGET=prod fo
 its history is only appended to (ADR-0006).
 
 The first business question it answers: how many products were on sale on a given day,
-per product line and colour? The sell dates carry the day, so the question reads each
-product's current version:
+per product line and colour? It reads each product's version valid on that day; the first
+version reaches back to 0001-01-01 (ADR-0011):
 
 ```sql
 select product__product_line, product__color, count(*)
 from serve__uss.product
-where product__valid_to = timestamp '9999-12-31' and _key__product like '%|%'
+where _key__product like '%|%'
+  and product__valid_from <= timestamp '2013-06-01' and timestamp '2013-06-01' < product__valid_to
   and product__sell_start <= date '2013-06-01'
   and (product__sell_end is null or product__sell_end >= date '2013-06-01')
   and (product__discontinued is null or date '2013-06-01' < product__discontinued)

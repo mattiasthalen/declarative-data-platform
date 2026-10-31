@@ -391,10 +391,8 @@ def test_full_refresh_keeps_integrate(story):
 # --------------------------------------------------------------------------- AC16, AC17, AC23
 
 
-def test_dimension_versions(story):
-    """AC16: per product an opening version from 0001-01-01 with null attributes, then one version per change, contiguous."""
-    snap = story.snap("s5")
-    color = dimension_column(snap, "color")
+def _dimension_versions(snap: Snapshot) -> tuple[list[str], dict[str, list[tuple]]]:
+    """Per identity, its versions in order: (valid_from, valid_to, from date, to date, *attribute values as text)."""
     attrs = [
         c
         for c in snap.columns("serve__uss", "product")
@@ -405,26 +403,42 @@ def test_dimension_versions(story):
     rows = snap.sql(
         "select split_part(_key__product, '|', 1), cast(product__valid_from as varchar), "
         "cast(product__valid_to as varchar), cast(cast(product__valid_from as date) as varchar), "
-        f"cast(cast(product__valid_to as date) as varchar), {q(color)}, "
-        + ", ".join(f"{q(c)} is null" for c in attrs)
+        "cast(cast(product__valid_to as date) as varchar), "
+        + ", ".join(f"cast({q(c)} as varchar)" for c in attrs)
         + " from serve__uss.product where _key__product like '%|%' order by 1, 4"
     )
     versions: dict[str, list[tuple]] = {}
     for row in rows:
-        versions.setdefault(row[0], []).append(row)
+        versions.setdefault(row[0], []).append(row[1:])
+    return attrs, versions
+
+
+def test_dimension_versions(story):
+    """AC16: per product a first version from 0001-01-01 holding each attribute's earliest value, then one
+    version per change; no version is all null; no gap and no overlap."""
+    snap = story.snap("s5")
+    attrs, versions = _dimension_versions(snap)
+    color = attrs.index(dimension_column(snap, "color")) + 4
     assert len(versions) == 9
     for identity, vs in versions.items():
-        assert vs[0][3] == "0001-01-01", (identity, vs[0])
-        assert all(vs[0][6:]), f"opening version of {identity} has attributes: {vs[0]}"
+        assert vs[0][2] == "0001-01-01", (identity, vs[0])
+        for v in vs:
+            assert any(x is not None for x in v[4:]), f"a version of {identity} is all null: {v}"
         for earlier, later in zip(vs, vs[1:]):
-            assert earlier[2] == later[1], f"gap or overlap in {identity}: {earlier} then {later}"
-        assert vs[-1][4] == "9999-12-31", (identity, vs[-1])
-    by_number = {n: str(pr_id(snap, n)) for n in ("SB-0007", "SC-0001", "SN-0002", "SS-0008")}
-    aba = versions[by_number["SB-0007"]]
-    assert [(v[3], v[5]) for v in aba] == [("0001-01-01", None), (D0, "Blue"), (D1, "Yellow"), (D2, "Blue")]
-    assert [v[3] for v in versions[by_number["SC-0001"]]] == ["0001-01-01", D0, D1]
-    assert [v[3] for v in versions[by_number["SN-0002"]]] == ["0001-01-01", D0]
-    assert [v[3] for v in versions[by_number["SS-0008"]]] == ["0001-01-01", D0]
+            assert earlier[1] == later[0], f"gap or overlap in {identity}: {earlier} then {later}"
+            assert earlier[4:] != later[4:], f"{identity} has a version that changes nothing: {earlier} then {later}"
+        assert vs[-1][3] == "9999-12-31", (identity, vs[-1])
+        earliest_color = posits(snap, "COL", int(identity))
+        if earliest_color:
+            first = min(earliest_color, key=lambda p: p[2])
+            assert vs[0][color] == first[1], f"{identity}'s first version does not hold its earliest colour"
+    by_number = {n: str(pr_id(snap, n)) for n in ("SA-0006", "SB-0007", "SC-0001", "SN-0002", "SS-0008")}
+    for number in ("SA-0006", "SB-0007"):
+        aba = versions[by_number[number]]
+        assert [(v[2], v[color]) for v in aba] == [("0001-01-01", "Blue"), (D1, "Yellow"), (D2, "Blue")], number
+    assert [(v[2], v[color]) for v in versions[by_number["SC-0001"]]] == [("0001-01-01", "Black"), (D1, "Red")]
+    assert [v[2] for v in versions[by_number["SN-0002"]]] == ["0001-01-01"]
+    assert [v[2] for v in versions[by_number["SS-0008"]]] == ["0001-01-01"]
 
 
 def test_dbt_tests_pass_every_build(story):
@@ -544,7 +558,7 @@ def test_change_back(story):
 
 
 def business_products() -> list[dict]:
-    """Products whose every version starts before D = 2013-06-01, so D falls in their one version."""
+    """Products with one version each, from 0001-01-01, so D = 2013-06-01 falls in it."""
     m = "2012-01-01"
     early = "2011-05-31"
     late = "2013-07-01"
@@ -571,6 +585,17 @@ def business_products() -> list[dict]:
             color="Red",
             sell_start="2013-06-02",
             modified=m,
+        ),
+        # AC16: BQ-104 again, discontinued first known at a later ChangedAt than its other attributes.
+        product(
+            104,
+            "BQ-104",
+            "Starts after D",
+            line="M",
+            color="Red",
+            sell_start="2013-06-02",
+            discontinued=LATE_DISCONTINUED,
+            modified=LATE_CHANGE,
         ),
         product(
             105,
@@ -616,6 +641,7 @@ def business_products() -> list[dict]:
 
 
 RESTATED_T1, RESTATED_T2 = "2012-01-01", "2012-06-01"
+LATE_CHANGE, LATE_DISCONTINUED = "2013-01-01", "2014-01-01"
 
 
 def _restated(product_id: int, number: str, *, later_first: bool) -> list[dict]:
@@ -641,14 +667,16 @@ def business(business_workspace) -> Snapshot:
 
 
 def test_business_question(business):
-    """AC4, EC5: products on sale on 2013-06-01 per product line and colour; null and blank lines are their own groups."""
+    """AC4, EC5: products on sale on 2013-06-01 per product line and colour, read from each product's version
+    valid on that day; null and blank lines are their own groups."""
     snap = business
     line, color = dimension_column(snap, "line"), dimension_column(snap, "color")
     start, end, disc = (dimension_column(snap, w) for w in ("sell_start", "sell_end", "discontinued"))
     d = "date '2013-06-01'"
     rows = snap.sql(
         f"select {q(line)}, {q(color)}, count(*) from serve__uss.product "
-        f"where cast(product__valid_from as date) <= {d} and {d} < cast(product__valid_to as date) "
+        "where _key__product like '%|%' "
+        f"and cast(product__valid_from as date) <= {d} and {d} < cast(product__valid_to as date) "
         f"and cast({q(start)} as date) <= {d} "
         f"and ({q(end)} is null or cast({q(end)} as date) >= {d}) "
         f"and ({q(disc)} is null or {d} < cast({q(disc)} as date)) "
@@ -671,6 +699,20 @@ def test_business_question(business):
     assert snap.count("serve__uss", "_bridge") > 0
     assert latest(snap, "BQ-109", "LIN") == ""
     assert latest(snap, "BQ-108", "LIN") is None
+
+
+def test_first_version_holds_a_later_first_value(business):
+    """AC16: an attribute first known at a later ChangedAt than the others shows its earliest value in the
+    first version, from 0001-01-01; holding it from then is no change, so there is no second version."""
+    snap = business
+    pid = pr_id(snap, "BQ-104")
+    assert [d for _, _, d in posits(snap, "NUM", pid)] == ["2012-01-01"]
+    assert [(v, d) for _, v, d in posits(snap, "DIS", pid)] == [(LATE_DISCONTINUED, LATE_CHANGE)]
+    attrs, versions = _dimension_versions(snap)
+    disc = attrs.index(dimension_column(snap, "discontinued")) + 4
+    color = attrs.index(dimension_column(snap, "color")) + 4
+    got = [(v[2], v[3], (v[disc] or "")[:10], v[color]) for v in versions[str(pid)]]
+    assert got == [("0001-01-01", "9999-12-31", LATE_DISCONTINUED, "Red")]
 
 
 def test_restatement_within_one_load(business):
@@ -910,8 +952,7 @@ def test_serve_catches_up_after_skipped_build(lifecycle):
         [pid],
     )
     assert [(f, c) for f, _, c in versions] == [
-        ("0001-01-01", None),
-        (D0, "Black"),
+        ("0001-01-01", "Black"),
         (D1, "Red"),
         (D2, "Green"),
     ]
