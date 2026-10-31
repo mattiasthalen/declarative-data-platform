@@ -191,6 +191,30 @@ def test_next_link_to_another_host_is_refused(feed, lake, capsys, caplog):
         foreign.server.shutdown()
 
 
+def test_next_link_with_backslash_before_userinfo_is_refused(feed, lake, capsys, caplog):
+    """ADR-0001: a next link that parsers read as different hosts (a backslash before the ``@``:
+    urlsplit sees the feed's host, urllib3 the other) fails the resource, and the other host is never asked."""
+    foreign = Feed()
+    try:
+        feed_hostport = feed.base.removeprefix("http://")
+        tricky = f"http://localhost:{foreign.server.server_port}\\@{feed_hostport}/Products?x"
+        feed.pages["/Products"] = (
+            200,
+            {"value": [product(1, "BS-0001", "Home")], "@odata.nextLink": tricky},
+        )
+        feed.pages["/Products?x"] = (200, {"value": [product(2, "BS-0002", "Feed")]})
+
+        code = run({"adventure_works__products": f"{feed.base}/Products"})
+
+        assert code != 0
+        assert foreign.requested == [], f"the other host was asked for {foreign.requested}"
+        assert feed.requested == ["/Products"]
+        assert "adventure_works__products" in said(capsys, caplog)
+        assert landed(lake) == {}, "a resource that failed landed rows"
+    finally:
+        foreign.server.shutdown()
+
+
 def _two_pages(feed: Feed, next_link: str) -> None:
     feed.pages["/Products"] = (
         200,

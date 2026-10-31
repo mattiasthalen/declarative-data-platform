@@ -88,6 +88,10 @@ def load_5() -> dict[str, dict]:
     return rows
 
 
+# The error the crt load raises on a contradiction (macros/anchor.sql, ADR-0006).
+CONTRADICTION = "two different values for one version at one PositedAt"
+
+
 class Story:
     """Runs the steps in order and stops at the first that fails; keeps a snapshot per good build."""
 
@@ -705,6 +709,7 @@ def test_contradiction_fails_the_build_new_row_first(business_workspace):
     ws.write_load(2, [dict(held, Color="Purple"), held])
     step = ws.build()
     assert step.returncode != 0, f"the contradicting load built:\n{tail(step.output)}"
+    assert CONTRADICTION in step.output, f"the build failed for another reason:\n{tail(step.output)}"
 
 
 # --------------------------------------------------------------------------- EC1
@@ -890,6 +895,7 @@ def test_contradiction_fails_the_build_held_row_first(lifecycle):
     """ADR-0006: two assertions of one version at one PositedAt fail the build, even when the first repeats the previous load."""
     step = _contradiction(lifecycle)
     assert step.returncode != 0, f"the contradicting load built:\n{tail(step.output)}"
+    assert CONTRADICTION in step.output, f"the build failed for another reason:\n{tail(step.output)}"
 
 
 def test_serve_catches_up_after_skipped_build(lifecycle):

@@ -107,6 +107,14 @@ def test_conform_refuses_logic_beyond_its_own_value(ws, logic):
     refused(ws, "conform")
 
 
+
+@pytest.mark.parametrize("logic", ["coalesce(value, #1)", "concat(value, $1)", 'trim("value")'])
+def test_conform_refuses_logic_reaching_a_column_by_position_or_quoted_name(ws, logic):
+    """F19: a transformLogic that reaches another column by position (``#1``, ``$1``) or by a
+    quoted identifier (``"value"`` names a column, not the property's own value) is refused."""
+    edit(ws, CONTRACT_PATH, lambda c: _property(c, "product_line").update(transformLogic=logic))
+    refused(ws, "conform")
+
 GENERATED_CONFORM = f"models/conform/adventure_works/{CONTRACT}.sql"
 SQL_LITERAL = re.compile(r"'(?:[^']|'')*'")
 
