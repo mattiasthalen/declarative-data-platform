@@ -1,38 +1,40 @@
 # Working in this repository
 
-`README.md` is the tour. This file says how the work is done.
+`README.md` is the tour. This file says how the work is done, wherever you are in the repo.
 
 ## Read first
 
 - `docs/adr/README.md`: every architecturally significant decision. A recorded decision is
   not re-argued; a new one gets its own ADR.
 - `docs/lexicon.md`: what the words mean. `docs/assumptions.md`: what is still assumed.
-- Anchor Modeling's own reference, `docs/ANCHOR.md` in
-  [Roenbaeck/anchor](https://github.com/Roenbaeck/anchor), and Lars Rönnbäck's
-  [anchor-snowflake-skill](https://github.com/Roenbaeck/anchor-snowflake-skill). Clone them
-  read-only when you work on integrate: `GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 <url>`.
 
-## Layout, by kind (ADR-0012)
+## Where things are, and whose rules apply
 
-- `contracts/`: one ODCS v3 contract per source object, snake_case names.
-- `anchor/model.yaml`: the whole Anchor model, a mirror of the vendored `anchor/anchor.xsd`.
-  `anchor/mappings/<anchor>.yaml`: where each anchor's attributes are loaded from.
-- `src/<ingest|conform|integrate|serve>/`: the code. `src/ownership/`: which generator owns
-  which folder.
-- `models/<layer>/<package>/`: dbt models. A folder with a generator's `README.md` is that
-  generator's: never edit it by hand; change the declarations and run `uv run task generate`.
-  Hand-written models go in folders without one.
-- `macros/`: the SQL the generated models call. `macros/anchor.sql` is the crt load
-  (ADR-0006); `macros/batch_log.sql` the load log (ADR-0007); `macros/uss.sql` serve.
+The repo is laid out by kind, and each layer's files sit in folders named after the layer
+(ADR-0012, ADR-0013). Each layer has its own rules in `.claude/rules/`, which load by
+themselves when you read a file of that layer:
 
-## Rules that are easy to break
+| layer | its folders | its rules |
+|---|---|---|
+| ingest | `src/ingest/`, `tests/ingest/` | `.claude/rules/ingest.md` |
+| conform | `contracts/`, `models/raw/`, `**/conform/` | `.claude/rules/conform.md` |
+| integrate | `anchor/`, `**/integrate/` | `.claude/rules/integrate.md` |
+| serve | `**/serve/` | `.claude/rules/serve.md`, and `.claude/rules/uss.md` for the USS |
+
+`**/<layer>/` means that layer's folder under `src/`, `models/`, `macros/` and `tests/`. A new
+file of a layer goes in one of its folders, or its rules will not reach the next agent (A8).
+Files outside them, such as `src/ownership/` or `macros/generate_schema_name.sql`, serve every
+layer and follow only this file.
+
+## Rules that hold everywhere
 
 - **Generated output is committed.** After changing a contract, the model, a mapping or a
   generator, run `uv run task generate` and commit the result with the change;
   `uv run task check` fails otherwise, naming the file, and CI requires it (ADR-0014).
-- **Names.** Conform columns are snake_case, `__` separates concerns, platform columns are
-  `_dlt__…` (ADR-0002). Integrate keeps Roenbaeck's default naming verbatim (ADR-0003).
-- **No static attributes.** Every attribute in `model.yaml` has a `timeRange`.
+- **Never edit a generated folder by hand.** A folder under `models/` whose `README.md` a
+  generator wrote is that generator's; change the declarations and regenerate (ADR-0012).
+- **`__` separates concerns in every name**: schemas (`serve__uss`), models
+  (`adventure_works__products`), columns (`_dlt__load_id`).
 - **One `dbt build` per target at a time.** DuckDB's file lock refuses a second; there is no
   locking of our own (A4).
 
@@ -44,4 +46,8 @@ uv run pytest
 ```
 
 The suite builds synthetic lakes through every layer in throwaway copies of the repo; the
-end-to-end tests take minutes. `tests/judged.md` lists the two checks a reviewer judges.
+end-to-end tests take minutes. `tests/judged.md` lists the checks a reviewer judges.
+
+After changing anything in `.claude/rules/` or moving a layer's folders, also run
+`uv run task test-rules`: it opens a file of each layer in a real Claude Code session and
+checks which rules loaded. It needs Claude Code, logged in, and never runs in CI.
