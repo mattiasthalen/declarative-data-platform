@@ -12,6 +12,8 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A4 | Only one `dbt build` runs against a target at a time, and none runs while ingest is landing a load. | operations | The orchestrator (story 16) schedules overlapping runs, or a staged load has fewer rows than its files in the lake. |
 | A5 | The generated load writes each posit and annex key once; nothing in DuckDB enforces it, since no model declares a contract or constraint. | integrate | `IntegrityViolations` reports a duplicate key and its `empty` test fails the build. |
 | A6 | Source dates and timestamps carry no timezone offset. `try_cast` to timestamp drops an offset without converting. | conform | A contract's source serves a value with `Z` or `+hh:mm`. |
+| A7 | CI needs no network beyond GitHub and the Python package index; nothing in `pytest` or `task check` calls the live source. | ci | A CI run fails on a connection error to a source host, or a test needs `demodata.grapecity.com`. |
+| A8 | The full suite runs on a GitHub-hosted runner in well under 15 minutes. | ci | The `test` job takes longer than 15 minutes, or hits its 30-minute timeout. |
 
 ## Measured (2026-10-30, the AdventureWorks OData feed)
 
@@ -20,3 +22,7 @@ What the design still assumes, and how you would know it stopped holding; then f
 - Dates are plain `YYYY-MM-DD` with no time or offset, `ModifiedDate` included (2026-10-31).
 - Products: 504 rows; every `ModifiedDate` is 2014-02-08.
 - `ProductLine` is padded (`'R '`, `'M '`, `'T '`, `'S '`) or null (225 rows). `Color` is null for 247. `SellEndDate` is null for 402.
+
+## Measured (2026-10-31, CI)
+
+- `uv run pytest` ran 80 tests in 4 min 22 s on a cloud container, before story 2's tests.

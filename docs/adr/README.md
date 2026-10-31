@@ -16,3 +16,5 @@ Nygard's format: Context, Decision, Consequences, with a Status. One decision pe
 | [0010](0010-cast-with-try-cast-and-never-let-a-failed-cast-retract.md) | Cast with try_cast, and never let a failed cast retract | Accepted (2026-10-31) |
 | [0011](0011-serve-a-uss-from-staged-bridges-unioned-by-name.md) | Serve a Unified Star Schema from incremental staged bridges unioned by name | Accepted (2026-10-31) |
 | [0012](0012-lay-the-repo-out-by-kind-with-generator-owned-folders.md) | Lay the repo out by kind, and let a generator own only folders that carry its README | Accepted (2026-10-31) |
+| [0013](0013-check-generated-output-byte-for-byte-through-the-writer-that-owns-it.md) | Check generated output byte for byte through the writer that owns it | Accepted (2026-10-31) |
+| [0014](0014-require-ci-check-and-test-jobs-to-pass-before-merging-into-main.md) | Require CI's check and test jobs to pass before anything merges into main | Accepted (2026-10-31) |

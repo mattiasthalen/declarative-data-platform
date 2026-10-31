@@ -21,6 +21,7 @@ lake (dlt, Parquet)  ->  raw  ->  conform  ->  integrate (Anchor, crt)  ->  serv
 uv sync
 uv run task ingest                  # land the feed under ./lake (or $LAKE_ROOT)
 uv run task generate                # regenerate every layer's models
+uv run task check                   # fail if committed models drifted from the declarations
 uv run task build                   # build warehouse/dev.duckdb (TARGET=prod for the other)
 ```
 
