@@ -19,10 +19,13 @@ lake (dlt, Parquet)  ->  raw  ->  conform  ->  integrate (Anchor, crt)  ->  serv
 
 ```sh
 uv sync
-uv run ingest                       # land the feed under ./lake (or $LAKE_ROOT)
+uv run task ingest                  # land the feed under ./lake (or $LAKE_ROOT)
 uv run task generate                # regenerate every layer's models
-uv run dbt build --target dev       # build warehouse/dev.duckdb
+uv run task build                   # build warehouse/dev.duckdb (TARGET=prod for the other)
 ```
+
+`uv run task --list` shows every task. Integrate refuses `--full-refresh`: its history is only
+appended to (ADR-0006).
 
 The first business question it answers: how many products were on sale on a given day,
 per product line and colour? The sell dates carry the day, so the question reads each

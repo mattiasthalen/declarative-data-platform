@@ -25,6 +25,9 @@ models:
       +materialized: incremental
     integrate:
       +schema: integrate
+      # Anchor history is only ever appended to: a full refresh would renumber identities
+      # against the tables it replaces, so integrate refuses one (ADR-0006).
+      +full_refresh: false
     serve:
       uss_staging:
         +schema: serve__uss_staging

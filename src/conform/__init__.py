@@ -30,6 +30,16 @@ TYPES = {
 }
 
 SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
+# A physical name is a JSON path into the landed row: names joined by dots.
+PATH = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+# The generated models are Jinja: no declared text may open a Jinja block.
+JINJA = re.compile(r"\{[{%#]|[}%#]\}")
+# What a transformLogic may call: functions of one text value, and nothing that reads or writes.
+FUNCTIONS = frozenset(
+    {"trim", "ltrim", "rtrim", "upper", "lower", "replace", "regexp_replace", "nullif", "coalesce",
+     "substring", "left", "right", "concat", "lpad", "rpad", "strip_accents"}
+)
+KEYWORDS = frozenset({"value", "case", "when", "then", "else", "end", "null", "and", "or", "not", "is", "in", "like"})
 
 
 class ContractError(Exception):
@@ -44,21 +54,36 @@ def literal(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
+def texts(node) -> list[str]:
+    """Every string in a parsed YAML document."""
+    if isinstance(node, dict):
+        return [t for k, v in node.items() for t in texts(k) + texts(v)]
+    if isinstance(node, list):
+        return [t for v in node for t in texts(v)]
+    return [node] if isinstance(node, str) else []
+
+
 def load(path: Path) -> dict:
     contract = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(contract, dict) or contract.get("kind") != "DataContract":
         raise ContractError(f"{path} is not an ODCS data contract")
+    for text in texts(contract):
+        if JINJA.search(text):
+            raise ContractError(f"{path}: {text!r} holds a Jinja delimiter")
     objects = contract.get("schema") or []
     if len(objects) != 1:
         raise ContractError(f"{path} must declare exactly one schema object")
+    for field in ("name", "physicalName"):
+        if field in objects[0] and not SNAKE.match(str(objects[0][field])):
+            raise ContractError(f"{path}: object {field} {objects[0][field]!r} is not snake_case")
     for prop in objects[0].get("properties") or []:
         name, logical = prop.get("name", ""), prop.get("logicalType")
         if not SNAKE.match(name):
             raise ContractError(f"{path}: property {name!r} is not snake_case")
         if logical not in TYPES:
             raise ContractError(f"{path}: {name} has unknown logicalType {logical!r}")
-        if not prop.get("physicalName"):
-            raise ContractError(f"{path}: {name} has no physicalName")
+        if not PATH.match(str(prop.get("physicalName") or "")):
+            raise ContractError(f"{path}: {name} needs a physicalName naming a JSON path")
     return contract
 
 
@@ -68,8 +93,13 @@ def value_expression(prop: dict) -> str:
     logic = prop.get("transformLogic")
     if not logic:
         return value
-    if re.search(r"\b(select|from|data|_dlt_\w*)\b", logic, re.IGNORECASE):
-        raise ContractError(f"transformLogic of {prop['name']} may only rewrite its own value: {logic}")
+    unquoted = re.sub(r"'(?:[^']|'')*'", "''", logic)
+    words = [(w.group(0).lower(), w.group(1)) for w in re.finditer(r"[A-Za-z_][A-Za-z0-9_]*(?=\s*(\()?)", unquoted)]
+    if ";" in unquoted or any(not (name in FUNCTIONS if call else name in KEYWORDS) for name, call in words):
+        raise ContractError(
+            f"transformLogic of {prop['name']} may only rewrite its own value with "
+            f"{', '.join(sorted(FUNCTIONS))}: {logic}"
+        )
     return re.sub(r"\bvalue\b", value, logic)
 
 

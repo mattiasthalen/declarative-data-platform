@@ -15,3 +15,9 @@ Rejected: flattened, typed columns at landing, which moves casting and naming ou
 ## Consequences
 
 Conform reads JSON paths, so a renamed source field is a contract change, not a lake migration. The lake grows by a full copy per run for full-pull resources. Making ingest itself declarative is a separate backlog item.
+
+dlt writes under `<bucket>/<dataset>/<layout>` and keeps its own bookkeeping in the dataset folder. The dataset is `_dlt`, so that bookkeeping sits in `$LAKE_ROOT/_dlt/`, and the layout starts with `../{table_name}/` so each resource sits directly under `LAKE_ROOT`. That step out of the dataset folder relies on the filesystem destination resolving `..` in a local path; a remote bucket needs another layout.
+
+A load lands file by file. A build that reads the lake while ingest is still writing a load can stage part of it, and conform's watermark then skips the rest (A4).
+
+An OData next link is followed only to the feed's own scheme and host; a link elsewhere fails the resource.

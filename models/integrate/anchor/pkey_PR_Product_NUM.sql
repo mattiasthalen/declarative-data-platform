@@ -6,8 +6,7 @@ select "PR_ID", "PR_NUM_Product_ProductNumber", changed_at as "ChangedAt",
     ) as "ChangedBefore"
 from (
     select "PR_NUM_PR_ID" as "PR_ID", "PR_NUM_Product_ProductNumber", "PR_NUM_ChangedAt" as changed_at
-    from {{ ref('PR_NUM_Product_ProductNumber') }}
-    where "PR_NUM_Positor" = 0
-    qualify row_number() over (partition by "PR_NUM_ID" order by "PR_NUM_PositedAt" desc) = 1
-        and "PR_NUM_Reliable" = 1
+    from (
+        {{ anchor_latest({'mnemonic': 'PR_NUM', 'name': 'PR_NUM_Product_ProductNumber'}) }}
+    )
 )

@@ -13,8 +13,9 @@ The integrate generator emits load SQL that applies ANCHOR.md's rules table itse
 - identical: nothing; a restatement (same value, later ChangedAt): skipped;
 - a new value: a posit and an annex at reliability 1;
 - another value at a held ChangedAt: a correction, a retraction at reliability 0 and the new assertion at the new PositedAt; a correction back to the previous version's value is a skipped restatement that still retracts;
-- a null from the source: a retraction; a key missing from a load: nothing;
-- loads apply in positing order, oldest load id first; two assertions of one version by one positor at one PositedAt fail the build.
+- a null from the source: a retraction of the version in effect at its ChangedAt; a key missing from a load: nothing;
+- a row that repeats the key's row in the load before is not applied again, so unchanged full pulls cost nothing however many there are;
+- loads apply in positing order, oldest load id first, and within a load in ChangedAt order; two assertions of one version by one positor at one PositedAt fail the build.
 
 PositedAt is `_dlt__extracted_at`, ChangedAt the source's change time, positor 0.
 
@@ -23,3 +24,9 @@ Rejected: assertive, under which every full load writes a re-assertion of every 
 ## Consequences
 
 The generated load is the only enforcement, so `IntegrityViolations` and the `ic_` views are tested after every build. Assertions that arrive out of positing order are not reordered, as in Anchor's triggers.
+
+crt has no way to assert that an attribute has no value, so a null retracts what is held. When a product has more than one version and the source nulls the attribute, the version in effect is retracted and the one before it is in effect again: the latest view shows the older value, not null.
+
+Integrate is only ever appended to. A full refresh would renumber identities against the tables it replaces, so the integrate models refuse one (`full_refresh: false`).
+
+The `ic_` views check duplicate keys and more than one reliable assertion at one time. Roenbaeck's crt checks for temporal duplicates and restatements are not generated yet; the load skips restatements, so those checks would guard the load rather than the data.

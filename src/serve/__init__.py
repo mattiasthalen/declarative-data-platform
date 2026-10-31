@@ -29,12 +29,9 @@ def snake(descriptor: str) -> str:
 
 
 def entity_literal(anchor, attributes) -> str:
-    """The anchor and each attribute with its dimension column, as a Jinja dict literal."""
+    """The anchor and each attribute, as a Jinja dict literal."""
     entity = snake(anchor.descriptor)
-    attrs = ", ".join(
-        f"{{'prefix': '{t.prefix}', 'name': '{t.name}', 'column': '{entity}__{snake(t.descriptor)}'}}"
-        for t in attributes
-    )
+    attrs = ", ".join(f"{{'prefix': '{t.prefix}', 'name': '{t.name}'}}" for t in attributes)
     return (
         f"{{'entity': '{entity}', 'anchor': '{anchor.name}', 'anchor_mnemonic': '{anchor.mnemonic}', "
         f"'attributes': [{attrs}]}}"
@@ -58,7 +55,7 @@ def staged_bridge(anchor, attributes) -> str:
         + "with {{ uss_versions(e) }}\n"
         "select\n"
         f"    '{entity}' as stage,\n"
-        f"    coalesce(_key, '{NOT_AVAILABLE}') as _key__{entity},\n"
+        f"    _key as _key__{entity},\n"
         "    valid_from as _valid_from,\n"
         "    valid_to as _valid_to\n"
         "from versions\n"

@@ -2,9 +2,10 @@
 
     open_batch runs before the first model: it opens a RUNNING batch, whose id every Anchor
     row written by this invocation carries in its Metadata column (anchor_batch).
-    close_batch runs after the last node. If any node errored the batch is left RUNNING, and
-    the next invocation opens a new one. If no Anchor row carries the batch, it wrote nothing
-    and the batch is removed. Otherwise it closes SUCCEEDED, or VIOLATIONS with the count
+    close_batch runs after the last node. If no Anchor row carries the batch, it wrote nothing
+    and the batch is removed. If serve has not read it, because a node errored, failed or was
+    skipped or because serve was not selected, the batch is left RUNNING, and the next
+    invocation opens a new one. Otherwise it closes SUCCEEDED, or VIOLATIONS with the count
     from IntegrityViolations. -#}
 
 {% macro load_batch_log() -%}
@@ -31,11 +32,6 @@ from {{ load_batch_log() }};
 
 {% macro close_batch(results) %}
     {%- if not execute -%}{{ return('') }}{%- endif -%}
-    {%- set errored = results | selectattr('status', 'equalto', 'error') | list -%}
-    {%- if errored | length > 0 -%}
-        {{ return('select 1') }}
-    {%- endif -%}
-
     {%- set metadata_columns = run_query(
         "select c.table_name, c.column_name from information_schema.columns c "
         ~ "join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name "
@@ -57,6 +53,21 @@ from {{ load_batch_log() }};
 
     {%- if referenced == 0 -%}
         {{ return('delete from ' ~ load_batch_log() ~ ' where "BATCH_ID" = ' ~ anchor_batch()) }}
+    {%- endif -%}
+
+    {#- Serve rebuilds the identities that RUNNING batches touched, so a batch stays RUNNING
+        until serve has read it: when any node errored, failed or was skipped, or when the
+        invocation did not build every serve model. -#}
+    {%- set unfinished = results | selectattr('status', 'in', ['error', 'fail', 'skipped']) | list -%}
+    {%- set built = results | selectattr('status', 'equalto', 'success') | map(attribute='node.unique_id') | list -%}
+    {%- set unserved = [] -%}
+    {%- for node in graph.nodes.values() -%}
+        {%- if node.resource_type == 'model' and 'serve' in node.fqn and node.unique_id not in built -%}
+            {%- do unserved.append(node.unique_id) -%}
+        {%- endif -%}
+    {%- endfor -%}
+    {%- if unfinished | length > 0 or unserved | length > 0 -%}
+        {{ return('select 1') }}
     {%- endif -%}
 
     {%- set violations = adapter.get_relation(database=target.database, schema='integrate', identifier='IntegrityViolations') -%}

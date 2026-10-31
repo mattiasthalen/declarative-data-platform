@@ -14,6 +14,7 @@ import os
 import sys
 from collections.abc import Iterator, Mapping
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 FEED = "https://demodata.grapecity.com/adventureworks/odata/v1"
 
@@ -35,10 +36,17 @@ def lake_root() -> Path:
 
 
 def odata_rows(url: str) -> Iterator[dict]:
-    """Every row of an OData feed, following ``@odata.nextLink`` page by page."""
+    """Every row of an OData feed, following ``@odata.nextLink`` page by page.
+
+    A next link is followed only to the feed's own scheme and host: the feed names the URL the
+    next request goes to, and it must not be able to send that request elsewhere.
+    """
     from dlt.sources.helpers import requests
 
+    origin = urlsplit(url)[:2]
     while url:
+        if urlsplit(url)[:2] != origin:
+            raise ValueError(f"next link {url} leaves the feed at {urlunsplit(origin + ('', '', ''))}")
         response = requests.get(url)
         response.raise_for_status()
         page = response.json()

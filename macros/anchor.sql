@@ -73,6 +73,7 @@ unknown_keys as (
         ) as claim
     from {{ ref(a.source) }} s
     where s."{{ a.key_column }}" is not null
+      and s."{{ a.changed_at }}" is not null
       and s."{{ a.key_column }}" not in (select "{{ a.identifier_value }}" from known_keys)
     group by s."{{ a.key_column }}"
 ),
@@ -127,21 +128,34 @@ where k.claim > (select count(*) from unclaimed_identities)
     from {{ ref(a.key_view) }}
 ),{% endif %}
 
--- The rows of every load at or after the newest PositedAt this attribute holds. A load at that
--- time is applied again, which changes nothing: the rules are idempotent.
+-- The rows of every load at or after the newest PositedAt this attribute holds, less those that
+-- repeat the key's row in the load before: an unchanged load states nothing new, so the number
+-- of rows to apply stays the number of changes, however many loads repeat them. A load at the
+-- newest PositedAt is applied again, which changes nothing: the rules are idempotent.
 source_rows as (
-    select
-        s."{{ a.key_column }}" as natural_key,
-        cast(s."{{ a.column }}" as {{ a.value_type }}) as value,
-        cast(s."{{ a.changed_at }}" as {{ a.time_type }}) as changed_at,
-        s._dlt__extracted_at as positing_at,
-        cast(s._dlt__load_id as decimal(38, 9)) as load_number,
-        list_contains(s._contract__cast_failed, '{{ a.column }}') as cast_failed
-    from {{ ref(a.source) }} s
-    where s."{{ a.key_column }}" is not null
-      and s."{{ a.changed_at }}" is not null
+    select natural_key, value, changed_at, positing_at, load_number, cast_failed
+    from (
+        select
+            *,
+            {'value': value, 'changed_at': changed_at, 'cast_failed': cast_failed} is not distinct from lag(
+                {'value': value, 'changed_at': changed_at, 'cast_failed': cast_failed}
+            ) over (partition by natural_key order by positing_at, load_number, changed_at) as repeats
+        from (
+            select
+                s."{{ a.key_column }}" as natural_key,
+                cast(s."{{ a.column }}" as {{ a.value_type }}) as value,
+                cast(s."{{ a.changed_at }}" as {{ a.time_type }}) as changed_at,
+                s._dlt__extracted_at as positing_at,
+                cast(s._dlt__load_id as decimal(38, 9)) as load_number,
+                list_contains(s._contract__cast_failed, '{{ a.column }}') as cast_failed
+            from {{ ref(a.source) }} s
+            where s."{{ a.key_column }}" is not null
+              and s."{{ a.changed_at }}" is not null
+        )
+    )
+    where not coalesce(repeats, false)
     {%- if held %}
-      and s._dlt__extracted_at >= coalesce(
+      and positing_at >= coalesce(
           (select max("{{ m }}_PositedAt") from {{ annex }}), cast('0001-01-01' as timestamp)
       )
     {%- endif %}
@@ -155,7 +169,7 @@ incoming as (
         r.positing_at,
         r.cast_failed,
         row_number() over (
-            partition by i.id order by r.positing_at, r.load_number, r.value nulls first
+            partition by i.id order by r.positing_at, r.load_number, r.changed_at, r.value nulls first
         ) as step
     from source_rows r
     join identities i on i.natural_key = r.natural_key

@@ -14,4 +14,6 @@ Rejected: a hash of the natural key, which gives the same id in every target wit
 
 ## Consequences
 
-`dev` and `prod` may number the same product differently; nothing joins across targets. The load needs the key view before it writes, so identities are assigned in one place per build.
+`dev` and `prod` may number the same product differently; nothing joins across targets. The load needs the key view before it writes, so identities are assigned in one place per build. A row without a ChangedAt asserts nothing, so its key gets no identity until a row of it has one.
+
+Two departures from Roenbaeck's `CreateKeys`, both because there is one positor and dbt builds relations, not functions: `key_PR_Product_NUM` has no Positor column, and `pkey_PR_Product_NUM` is a view of every key value with its `ChangedAt` and `ChangedBefore` rather than a function of a time point. The key at a time T is the row with `ChangedAt <= T < ChangedBefore`.

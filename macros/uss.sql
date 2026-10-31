@@ -1,6 +1,5 @@
 {#- The Unified Star Schema over an anchor, on business time (ADR-0011). Each macro takes `e`,
-    the dict the serve generator writes: the entity, its anchor, and each attribute with the
-    dimension column it fills. -#}
+    the dict the serve generator writes: the entity, its anchor, and each attribute. -#}
 
 
 {#- The identities whose rows a batch not yet closed has written: this build's, and those a
@@ -50,11 +49,8 @@ identities as (
         "{{ t.prefix }}_{{ e.anchor_mnemonic }}_ID" as id,
         "{{ t.prefix }}_ChangedAt" as changed_at,
         "{{ t.name }}" as value
-    from {{ ref(t.name) }}
-    where "{{ t.prefix }}_Positor" = 0
-      and "{{ t.prefix }}_{{ e.anchor_mnemonic }}_ID" in (select id from identities)
-    qualify row_number() over (partition by "{{ t.prefix }}_ID" order by "{{ t.prefix }}_PositedAt" desc) = 1
-        and "{{ t.prefix }}_Reliable" = 1
+    from ({{ anchor_latest({'mnemonic': t.prefix, 'name': t.name}) }})
+    where "{{ t.prefix }}_{{ e.anchor_mnemonic }}_ID" in (select id from identities)
 ),
 {%- endfor %}
 

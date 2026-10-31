@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,6 +68,37 @@ class ModelError(Exception):
     pass
 
 
+# What each declared field may hold. Every one goes into SQL, Jinja or a file name.
+MNEMONIC = re.compile(r"^[A-Z]{2,3}$")
+DESCRIPTOR = re.compile(r"^[A-Z][A-Za-z0-9]*$")
+SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
+TYPE = re.compile(r"^[a-z]+( ?\(\d+(, ?\d+)?\))?$")
+JINJA = re.compile(r"\{[{%#]|[}%#]\}")
+
+
+def texts(node) -> list[str]:
+    """Every string in a parsed YAML document."""
+    if isinstance(node, dict):
+        return [t for k, v in node.items() for t in texts(k) + texts(v)]
+    if isinstance(node, list):
+        return [t for v in node for t in texts(v)]
+    return [node] if isinstance(node, str) else []
+
+
+def checked(value, pattern: re.Pattern, what: str) -> str:
+    if not isinstance(value, str) or not pattern.match(value):
+        raise ModelError(f"{what} {value!r} does not match {pattern.pattern}")
+    return value
+
+
+def safe_yaml(path: Path) -> dict:
+    document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    for text in texts(document):
+        if JINJA.search(text):
+            raise ModelError(f"{path}: {text!r} holds a Jinja delimiter")
+    return document
+
+
 @dataclass(frozen=True)
 class Attribute:
     anchor: "Anchor"
@@ -103,7 +135,6 @@ class Anchor:
     route: str
     source: str
     changed_at: str
-    node: dict
 
     @property
     def name(self) -> str:
@@ -125,30 +156,32 @@ def as_list(value) -> list:
 
 
 def read(root: Path) -> tuple[dict, list[tuple[Anchor, list[Attribute], Attribute]]]:
-    document = yaml.safe_load((root / MODEL).read_text(encoding="utf-8"))
-    schema = (document or {}).get("schema")
+    schema = safe_yaml(root / MODEL).get("schema")
     if not isinstance(schema, dict):
         raise ModelError(f"{MODEL} has no schema")
     anchors = []
     for node in as_list(schema.get("anchor")):
-        mnemonic, descriptor = node["mnemonic"], node["descriptor"]
+        mnemonic = checked(node["mnemonic"], MNEMONIC, "anchor mnemonic")
+        descriptor = checked(node["descriptor"], DESCRIPTOR, f"{mnemonic} descriptor")
         mapping_path = root / MAPPINGS / f"{mnemonic}_{descriptor}.yaml"
         if not mapping_path.is_file():
             raise ModelError(f"{mnemonic}_{descriptor} has no mapping at {mapping_path.relative_to(root)}")
-        mapping = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))
-        columns = {m["attribute"]: m["column"] for m in as_list(mapping.get("attributes"))}
-        routes = [i["route"] for i in as_list(node.get("identifier"))]
+        mapping = safe_yaml(mapping_path)
+        columns = {
+            m["attribute"]: checked(m["column"], SNAKE, f"{mnemonic}_{descriptor} column")
+            for m in as_list(mapping.get("attributes"))
+        }
+        routes = [checked(i["route"], DESCRIPTOR, f"{mnemonic}_{descriptor} route") for i in as_list(node.get("identifier"))]
         if len(routes) != 1:
             raise ModelError(f"{mnemonic}_{descriptor} needs exactly one identifier route")
         anchor = Anchor(
             mnemonic=mnemonic,
             descriptor=descriptor,
-            identity=node.get("identity", "int"),
+            identity=checked(node.get("identity", "int"), TYPE, f"{mnemonic}_{descriptor} identity"),
             description=str(node.get("description") or "").strip(),
             route=routes[0],
-            source=mapping["source"],
-            changed_at=mapping["changed_at"],
-            node=node,
+            source=checked(mapping["source"], SNAKE, f"{mnemonic}_{descriptor} source"),
+            changed_at=checked(mapping["changed_at"], SNAKE, f"{mnemonic}_{descriptor} changed_at"),
         )
         attributes = []
         identifier = None
@@ -159,10 +192,10 @@ def read(root: Path) -> tuple[dict, list[tuple[Anchor, list[Attribute], Attribut
                 raise ModelError(f"{anchor.name}: attribute {item['mnemonic']} must be historized")
             attribute = Attribute(
                 anchor=anchor,
-                mnemonic=item["mnemonic"],
-                descriptor=item["descriptor"],
-                data_range=item["dataRange"],
-                time_range=item["timeRange"],
+                mnemonic=checked(item["mnemonic"], MNEMONIC, f"{anchor.name} attribute mnemonic"),
+                descriptor=checked(item["descriptor"], DESCRIPTOR, f"{anchor.name} attribute descriptor"),
+                data_range=checked(item["dataRange"], TYPE, f"{anchor.name} dataRange"),
+                time_range=checked(item["timeRange"], TYPE, f"{anchor.name} timeRange"),
                 description=str(item.get("description") or "").strip(),
                 column=columns[item["mnemonic"]],
             )
@@ -360,10 +393,7 @@ def anchor_files(anchor: Anchor, attributes: list[Attribute], identifier: Attrib
             f'        partition by "{anchor.id}" order by changed_at\n    ) as "ChangedBefore"\n'
             "from (\n"
             f'    select "{k.prefix}_{anchor.id}" as "{anchor.id}", "{k.name}", "{k.prefix}_ChangedAt" as changed_at\n'
-            f"    from {{{{ ref('{k.name}') }}}}\n"
-            f'    where "{k.prefix}_Positor" = 0\n'
-            f'    qualify row_number() over (partition by "{k.prefix}_ID" order by "{k.prefix}_PositedAt" desc) = 1\n'
-            f'        and "{k.prefix}_Reliable" = 1\n'
+            f"    from (\n        {{{{ anchor_latest({{'mnemonic': '{k.prefix}', 'name': '{k.name}'}}) }}}}\n    )\n"
             ")"
         ),
     )
@@ -564,13 +594,9 @@ def schema_file(anchors) -> str:
 def packages(root: Path) -> dict[Path, dict[str, str]]:
     schema, anchors = read(root)
     files: dict[str, str] = {}
-    checks = []
     for anchor, attributes, identifier in anchors:
         files |= anchor_files(anchor, attributes, identifier)
-        checks.append(f"ic_{anchor.name}")
-        for t in attributes:
-            checks += [f"ic_{t.posit}", f"ic_{t.annex}", f"ic_{t.name}"]
-        checks.append(f"ic_{anchor.key_view}")
+    checks = [name.removesuffix(".sql") for name in files if name.startswith("ic_")]
     files["IntegrityViolations.sql"] = view(
         "Every integrity check of the model in one view: a row is something wrong.",
         "select\n    cast(null as varchar) as Construct,\n    cast(null as varchar) as Violation,\n"
