@@ -8,10 +8,10 @@ Drift between declarations and committed generated code ([ADR-0013](0013-check-g
 
 ## Decision
 
-One GitHub Actions workflow runs on every pull request and every push to `main`, with two parallel jobs: `check` runs `task check`, and `test` runs `uv run pytest`, whose end-to-end tests are the `dbt build` against a lake. Both use `astral-sh/setup-uv` with its cache and Python 3.13, and neither calls the live source. A branch ruleset on `main` requires both jobs to pass before a merge.
+One GitHub Actions workflow runs on every pull request and every push to `main`, with two parallel jobs: `check` runs `task check`, and `test` runs `uv run pytest`, whose end-to-end tests are the `dbt build` against a lake. Both use `astral-sh/setup-uv` with its cache and Python 3.13, and neither calls the live source. A branch ruleset on `main` requires both jobs to pass before a merge, each pinned to the GitHub Actions app so a status of the same name from elsewhere does not count. The workflow's token is read-only, actions are pinned by commit, and uv runs with the lock as committed.
 
 Rejected: advisory CI, because a red pull request could still merge; one job running the check and then the tests, because a drift would hide test failures and the red would arrive later.
 
 ## Consequences
 
-A pull request cannot merge while drifted or red. Job names `check` and `test` are part of the ruleset: renaming a job means updating the ruleset in the same change. Anyone with admin rights can switch the ruleset off in the repository settings. Story 2's second delivery replaces the synthetic lake with the seeded simulator's lake inside the same `test` job.
+A pull request cannot merge while drifted or red. Job names `check` and `test` are part of the ruleset: renaming a job means updating the ruleset in the same change. Anyone with admin rights can switch the ruleset off in the repository settings. Story 2's second delivery replaces the synthetic lake with the seeded simulator's lake inside the same `test` job. Rulesets on a private repository need a paid GitHub plan (A9); without one CI is advisory again.

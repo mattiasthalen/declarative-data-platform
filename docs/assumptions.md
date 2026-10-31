@@ -14,6 +14,7 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A6 | Source dates and timestamps carry no timezone offset. `try_cast` to timestamp drops an offset without converting. | conform | A contract's source serves a value with `Z` or `+hh:mm`. |
 | A7 | CI needs no network beyond GitHub and the Python package index; nothing in `pytest` or `task check` calls the live source. | ci | A CI run fails on a connection error to a source host, or a test needs `demodata.grapecity.com`. |
 | A8 | The full suite runs on a GitHub-hosted runner in well under 15 minutes. | ci | The `test` job takes longer than 15 minutes, or hits its 30-minute timeout. |
+| A9 | The `main` ruleset is enforced: the repository is public, or its owner's plan includes rulesets on private repositories. | ci | Creating the ruleset is refused, or a pull request with a red `check` can be merged. |
 
 ## Measured (2026-10-30, the AdventureWorks OData feed)
 
@@ -25,4 +26,4 @@ What the design still assumes, and how you would know it stopped holding; then f
 
 ## Measured (2026-10-31, CI)
 
-- `uv run pytest` ran 80 tests in 4 min 22 s on a cloud container, before story 2's tests.
+- The `test` job on a GitHub-hosted `ubuntu-latest` (Ubuntu 26.04) runner: 118 passed, 1 skipped, job 3 min 47 s (PR #22, run 41252831815). The `check` job: 12 s.
