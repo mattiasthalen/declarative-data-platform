@@ -33,3 +33,8 @@ tasks:
     desc: Build every layer into the target's DuckDB file (TARGET=dev by default)
     cmds:
       - uv run dbt build --target {{.TARGET | default "dev"}}
+
+  test-rules:
+    desc: Prove each layer's agent rules load, in real Claude Code sessions (local only)
+    cmds:
+      - uv run pytest -m claude
