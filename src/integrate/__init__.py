@@ -4,7 +4,7 @@ Reads ``anchor/model.yaml`` (a mirror of anchor.xsd, ADR-0004) and ``anchor/mapp
 and writes one package, ``models/integrate/anchor/``: per anchor its table, per attribute a posit
 table, an annex table and the assembled view, the latest perspective, the key views, the
 integrity checks and Anchor's schema tracking, all in Roenbaeck's default naming (ADR-0003).
-The load itself is in ``macros/anchor.sql`` (ADR-0006).
+The load itself is in ``macros/integrate/anchor.sql`` (ADR-0006).
 """
 
 from __future__ import annotations
