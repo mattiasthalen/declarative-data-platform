@@ -1,0 +1,122 @@
+apiVersion: v3.1.0
+kind: DataContract
+id: adventure_works__products
+name: adventure_works__products
+version: 1.0.0
+status: active
+domain: adventure_works
+description:
+  purpose: >-
+    Products as the AdventureWorks OData feed serves them, landed whole by
+    `uv run ingest` and staged in conform as adventure_works__products.
+schema:
+  - name: adventure_works__products
+    physicalName: adventure_works__products
+    physicalType: table
+    logicalType: object
+    description: One row per product, as of the load that brought it.
+    properties:
+      - name: product_id
+        physicalName: ProductId
+        logicalType: integer
+        description: The source's own key for the product.
+        primaryKey: true
+      - name: name
+        physicalName: Name
+        logicalType: string
+        description: The product's name.
+      - name: product_number
+        physicalName: ProductNumber
+        logicalType: string
+        description: The product's number, unique to one product; the business key.
+        required: true
+      - name: make_flag
+        physicalName: MakeFlag
+        logicalType: boolean
+        description: True when the product is made in-house, false when it is bought.
+      - name: finished_goods_flag
+        physicalName: FinishedGoodsFlag
+        logicalType: boolean
+        description: True when the product can be sold.
+      - name: color
+        physicalName: Color
+        logicalType: string
+        description: The product's colour.
+      - name: safety_stock_level
+        physicalName: SafetyStockLevel
+        logicalType: integer
+        description: The minimum inventory quantity.
+      - name: reorder_point
+        physicalName: ReorderPoint
+        logicalType: integer
+        description: The inventory level that triggers a purchase or work order.
+      - name: standard_cost
+        physicalName: StandardCost
+        logicalType: number
+        description: The standard cost of the product.
+      - name: list_price
+        physicalName: ListPrice
+        logicalType: number
+        description: The selling price.
+      - name: size
+        physicalName: Size
+        logicalType: string
+        description: The product's size.
+      - name: size_unit_measure_code
+        physicalName: SizeUnitMeasureCode
+        logicalType: string
+        description: The unit of measure of the size.
+      - name: weight_unit_measure_code
+        physicalName: WeightUnitMeasureCode
+        logicalType: string
+        description: The unit of measure of the weight.
+      - name: weight
+        physicalName: Weight
+        logicalType: number
+        description: The product's weight.
+      - name: days_to_manufacture
+        physicalName: DaysToManufacture
+        logicalType: integer
+        description: The days it takes to make the product.
+      - name: product_line
+        physicalName: ProductLine
+        logicalType: string
+        description: R road, M mountain, T touring, S standard; padded to two characters at the source.
+        transformLogic: trim(value)
+      - name: class
+        physicalName: Class
+        logicalType: string
+        description: H high, M medium, L low.
+      - name: style
+        physicalName: Style
+        logicalType: string
+        description: W womens, M mens, U universal.
+      - name: product_subcategory_id
+        physicalName: ProductSubcategoryId
+        logicalType: integer
+        description: The subcategory the product belongs to.
+      - name: product_model_id
+        physicalName: ProductModelId
+        logicalType: integer
+        description: The model the product belongs to.
+      - name: sell_start_date
+        physicalName: SellStartDate
+        logicalType: date
+        description: The first day the product was on sale.
+      - name: sell_end_date
+        physicalName: SellEndDate
+        logicalType: date
+        description: The last day the product was on sale.
+      - name: discontinued_date
+        physicalName: DiscontinuedDate
+        logicalType: date
+        description: The day the product was discontinued.
+      - name: rowguid
+        physicalName: Rowguid
+        logicalType: string
+        description: The source's row identifier.
+      - name: modified_date
+        physicalName: ModifiedDate
+        logicalType: timestamp
+        description: When the source last changed the row.
+        required: true

@@ -1,0 +1,124 @@
+version: 2
+models:
+- name: adventure_works__products
+  description: One row per product, as of the load that brought it.
+  columns:
+  - name: product_id
+    description: The source's own key for the product.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: name
+    description: The product's name.
+  - name: product_number
+    description: The product's number, unique to one product; the business key.
+    data_tests:
+    - not_null:
+        config:
+          severity: warn
+  - name: make_flag
+    description: True when the product is made in-house, false when it is bought.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: finished_goods_flag
+    description: True when the product can be sold.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: color
+    description: The product's colour.
+  - name: safety_stock_level
+    description: The minimum inventory quantity.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: reorder_point
+    description: The inventory level that triggers a purchase or work order.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: standard_cost
+    description: The standard cost of the product.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: list_price
+    description: The selling price.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: size
+    description: The product's size.
+  - name: size_unit_measure_code
+    description: The unit of measure of the size.
+  - name: weight_unit_measure_code
+    description: The unit of measure of the weight.
+  - name: weight
+    description: The product's weight.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: days_to_manufacture
+    description: The days it takes to make the product.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: product_line
+    description: R road, M mountain, T touring, S standard; padded to two characters at the source.
+  - name: class
+    description: H high, M medium, L low.
+  - name: style
+    description: W womens, M mens, U universal.
+  - name: product_subcategory_id
+    description: The subcategory the product belongs to.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: product_model_id
+    description: The model the product belongs to.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: sell_start_date
+    description: The first day the product was on sale.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: sell_end_date
+    description: The last day the product was on sale.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: discontinued_date
+    description: The day the product was discontinued.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: rowguid
+    description: The source's row identifier.
+  - name: modified_date
+    description: When the source last changed the row.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+    - not_null:
+        config:
+          severity: warn
+  - name: _contract__cast_failed
+    description: The properties whose non-null source value failed its cast in this row.
