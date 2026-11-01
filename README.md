@@ -41,8 +41,8 @@ This repo declares what runs and when: the flows and `orchestrate/prefect.yaml` 
 the `0 * * * *` UTC schedule, one run and one build at a time). The infra provides the Prefect
 server, a work pool and its workers. Flow runs start in the directory the deploy ran from, so
 those workers need the repo at that same path, with the lake and the DuckDB file beside it, and
-the pool must let one flow run more than there are sources run at once (A18). Kubernetes pods, which would need
-the repo and shared storage brought to them, are not set up yet (ADR-0024). To run it on your machine, with three terminals in the repo root:
+the pool must admit one flow run more than there are sources (A18). Kubernetes pods, which
+would need the repo and shared storage brought to them, are not set up yet (ADR-0024). To run it on your machine, with three terminals in the repo root:
 
 ```sh
 uv run task orchestrate:server                       # 1: a local Prefect server on :4200

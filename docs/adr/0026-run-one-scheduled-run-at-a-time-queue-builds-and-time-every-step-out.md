@@ -14,4 +14,4 @@ Rejected, for `run`: enqueue (runs pile up behind a slow one, and the next run c
 
 ## Consequences
 
-A scheduled run lasts at most about an hour and a quarter before it ends Failed and frees the slot, or about two hours when its build queues behind one started by hand. A build started by hand in Prefect queues behind the scheduled build, and the scheduled build behind it, but neither is held off the other's ingest; nothing started with `task` is held off at all (A4).
+A scheduled run lasts at most about two hours before it ends Failed and frees the slot, and that only when its build cannot start for 40 minutes; with free workers and no build ahead of it, about an hour and a quarter. A build started by hand in Prefect queues behind the scheduled build, and the scheduled build behind it, but neither is held off the other's ingest; nothing started with `task` is held off at all (A4).

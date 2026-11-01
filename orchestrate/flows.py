@@ -35,6 +35,9 @@ BUILD_TIMEOUT_SECONDS = 30 * 60
 # may queue behind one other build, so it gets that build's timeout on top.
 START_WITHIN_SECONDS = 10 * 60
 FINISH_GRACE_SECONDS = 2 * 60
+# How long a cancelled child gets to stop (the worker's SIGTERM, then kill after 30 seconds),
+# so the build does not start while a cancelled ingest still writes.
+STOP_WITHIN_SECONDS = 2 * 60
 POLL_SECONDS = 5
 
 # Ingest's exit statuses (ADR-0018): 0 every resource landed, 1 some did, 2 none.
@@ -60,7 +63,11 @@ def run_command(command: list[str], timeout: float) -> Outcome:
     leave dbt running and holding the DuckDB file.
     """
     proc = subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -103,7 +110,9 @@ def ingest_source(
     if outcome.exit == LANDED_ALL:
         return Completed(message=f"{source} landed")
     if outcome.exit == LANDED_SOME:
-        return Failed(name=PARTLY_LANDED, message=f"{source} landed some resources (exit 1)")
+        return Failed(
+            name=PARTLY_LANDED, message=f"{source} landed some resources (exit 1)"
+        )
     return Failed(message=f"{source} landed nothing (exit {outcome.exit})")
 
 
@@ -128,13 +137,17 @@ def landed(child: FlowRun) -> bool:
 
 
 async def run_child(
-    deployment: str, parameters: dict, timeout_seconds: float, start_within_seconds: float
+    deployment: str,
+    parameters: dict,
+    timeout_seconds: float,
+    start_within_seconds: float,
 ) -> FlowRun:
     """Start a flow run of ``deployment`` under the current flow and wait for it to end.
 
     One not started within ``start_within_seconds``, or not ended FINISH_GRACE_SECONDS past
     its own timeout once started, is asked to cancel, which stops its process, and returned
-    as it then stands, so the caller counts it as failed.
+    once cancelled, or after STOP_WITHIN_SECONDS as it then stands; either way the caller
+    counts it as failed.
     """
     child = await run_deployment(
         deployment,
@@ -153,12 +166,20 @@ async def run_child(
                 started = True
                 deadline = time.monotonic() + timeout_seconds + FINISH_GRACE_SECONDS
             if time.monotonic() > deadline:
+                get_run_logger().warning(
+                    f"{deployment} run {child.name} did not finish within its timeout: cancelling"
+                )
                 # Not forced: a forced Cancelled frees the run's concurrency slot but leaves
                 # its process running, and could overwrite a run that has just completed.
                 await client.set_flow_run_state(
                     child.id, Cancelling(message="did not finish within its timeout")
                 )
-                return await client.read_flow_run(child.id)
+                stop_by = time.monotonic() + STOP_WITHIN_SECONDS
+                while True:
+                    child = await client.read_flow_run(child.id)
+                    if child.state.is_final() or time.monotonic() > stop_by:
+                        return child
+                    await asyncio.sleep(POLL_SECONDS)
             await asyncio.sleep(POLL_SECONDS)
 
 
@@ -176,12 +197,18 @@ async def run(
     # signal lands in the main thread and does not kill the listing; its timeout bounds it.
     listing = await asyncio.to_thread(run_command, list_command, LIST_TIMEOUT_SECONDS)
     if listing.exit is None:
-        return Failed(message=f"listing the sources timed out after {LIST_TIMEOUT_SECONDS}s")
+        return Failed(
+            message=f"listing the sources timed out after {LIST_TIMEOUT_SECONDS}s"
+        )
     if listing.exit != 0:
         return Failed(
             message=f"listing the sources failed (exit {listing.exit}): {listing.stderr.strip()}"
         )
-    sources = list(dict.fromkeys(line.strip() for line in listing.stdout.splitlines() if line.strip()))
+    sources = list(
+        dict.fromkeys(
+            line.strip() for line in listing.stdout.splitlines() if line.strip()
+        )
+    )
     if not sources:
         return Failed(message="no sources listed: nothing to ingest")
 
@@ -196,7 +223,11 @@ async def run(
             for source in sources
         )
     )
-    failed = [source for source, child in zip(sources, children) if not child.state.is_completed()]
+    failed = [
+        source
+        for source, child in zip(sources, children)
+        if not child.state.is_completed()
+    ]
     problems = [f"sources not fully landed: {', '.join(failed)}"] if failed else []
 
     if not any(landed(child) for child in children):
@@ -206,10 +237,12 @@ async def run(
         "build/build",
         {"target": target, "command": build_command},
         build_timeout_seconds,
-        START_WITHIN_SECONDS + BUILD_TIMEOUT_SECONDS,
+        START_WITHIN_SECONDS + build_timeout_seconds,
     )
     if not built.state.is_completed():
-        problems.append(f"build {built.state.name}: {built.state.message}")
+        problems.append(
+            f"build {built.state.name}: {built.state.message or 'see its log'}"
+        )
     if problems:
         return Failed(message="; ".join(problems))
     return Completed(message=f"{len(sources)} sources landed, {target} built")
