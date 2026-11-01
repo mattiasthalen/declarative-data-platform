@@ -23,6 +23,7 @@ import time
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -588,3 +589,201 @@ def test_clock_behind(monkeypatch, capsys, tmp_path):
     assert added[1].number > added[0].number
     for load in added:
         assert_landed_shape(load)
+
+
+# --------------------------------------------------------------------------- review findings
+#
+# Regression tests for the findings of story #25's reviews (round 1 and the gate's G-findings).
+
+
+MANY_SEEDS = range(50)
+
+
+@pytest.fixture(scope="module")
+def many(tmp_path_factory):
+    """Per seed 0..49: the ProductNumbers of each load, in load-id order, of ``simulate --seed s
+    --loads 6`` on an empty lake, or what the run ended with."""
+    import simulate
+
+    out = {}
+    for seed in MANY_SEEDS:
+        lake = tmp_path_factory.mktemp(f"seed{seed}") / "lake"
+        lake.mkdir()
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setenv("LAKE_ROOT", str(lake))
+            try:
+                code = simulate.main(["--seed", str(seed), "--loads", "6"])
+            except SystemExit as exit_:
+                code = exit_.code
+            except Exception as error:  # noqa: BLE001
+                code = repr(error)
+        out[seed] = (code, _numbers_per_load(lake))
+    return out
+
+
+def _numbers_per_load(lake: Path) -> list[tuple[str, set[str]]]:
+    """(load id, its ProductNumbers) of every Products load in ``lake``, in load-id order: one query."""
+    import duckdb
+
+    if not files(lake):
+        return []
+    con = duckdb.connect()
+    try:
+        rows = con.execute(
+            f"""
+            select cast(_dlt_load_id as varchar), json_extract_string(cast(data as varchar), '$.ProductNumber')
+            from read_parquet('{(lake / RESOURCE).as_posix()}/**/*.parquet', hive_partitioning = false)
+            """
+        ).fetchall()
+    finally:
+        con.close()
+    per_load: dict[str, set[str]] = {}
+    for load, number in rows:
+        per_load.setdefault(load, set()).add(number)
+    return sorted(per_load.items(), key=lambda item: Decimal(item[0]))
+
+
+def test_dropped_product_back_in_next_load_many_seeds(many):
+    """G1 (AC4, spec [3]): a product absent from load n (dropped there) is present again in load n+1;
+    no product is absent from two loads in a row. Seeds 0..49, 6 loads each, empty lake."""
+    failures = []
+    for seed, (code, history) in many.items():
+        assert code == 0, f"seed {seed}: simulate ended with {code}"
+        assert len(history) == 7, f"seed {seed}: {len(history)} loads"
+        seen: set[str] = set(history[0][1])
+        for n in range(1, len(history) - 1):
+            (load, numbers), (next_load, next_numbers) = history[n], history[n + 1]
+            seen |= numbers
+            absent_twice = (seen - numbers) - next_numbers
+            if absent_twice:
+                failures.append(f"seed {seed}: {sorted(absent_twice)} absent from load {load} and from {next_load}")
+    assert not failures, "\n".join(failures)
+
+
+def test_last_load_drops_none_many_seeds(many):
+    """G4 / round-1 F1 (spec [3], amended): a run's last load drops no product: every product of the
+    load before it is in it. Seeds 0..49, 6 loads each, empty lake."""
+    failures = []
+    for seed, (code, history) in many.items():
+        assert code == 0, f"seed {seed}: simulate ended with {code}"
+        assert len(history) == 7, f"seed {seed}: {len(history)} loads"
+        (_, before), (last, numbers) = history[-2], history[-1]
+        if before - numbers:
+            failures.append(f"seed {seed}: last load {last} drops {sorted(before - numbers)}")
+    assert not failures, "\n".join(failures)
+
+
+def test_last_load_drops_none_seed_7(seven):
+    """G4 / round-1 F1: seed 7's last load drops no product, and a product dropped in the load before
+    it is back in it."""
+    lake, code = seven
+    assert code == 0, f"simulate --seed 7 --loads 6 ended with {code}"
+    history = loads(lake)
+    assert len(history) == 7
+    found = diff(history)
+    assert not found[-1]["dropped"], f"the last load {history[-1].load_id} drops {sorted(found[-1]['dropped'])}"
+    last = history[-1].by_number()
+    assert not [n for n in found[-2]["dropped"] if n not in last]
+
+
+def test_live_lake_stamps_each_load_at_the_clock(monkeypatch, capsys, tmp_path):
+    """Round-1 F2 (spec [4]): on a lake whose latest load is in the past, each new load id is the
+    current time when it is written: within about a second of the wall clock, never a second or more
+    ahead of it, strictly increasing; not the first stamp plus 1 s, 2 s..."""
+    lake = tmp_path / "lake"
+    _hand_written_lake(lake)
+    existing = {load.load_id for load in loads(lake)}
+    started = time.time()
+    code, _, err = run(monkeypatch, capsys, lake, "--seed", "7", "--loads", "3")
+    finished = time.time()
+    assert code == 0, err
+    added = [load for load in loads(lake) if load.load_id not in existing]
+    assert len(added) == 3, [load.load_id for load in added]
+    for earlier, later in pairwise(added):
+        assert earlier.number < later.number, (earlier.load_id, later.load_id)
+    for load in added:
+        stamp = float(load.load_id)
+        written = load.path.stat().st_mtime
+        assert stamp >= started - 1, (load.load_id, started)
+        assert stamp < finished + 1, f"load {load.load_id} is ahead of the clock (run ended at {finished:.3f})"
+        assert stamp - written < 1, f"load {load.load_id} is {stamp - written:.3f}s ahead of its file's write time"
+        assert written - stamp < 2, f"load {load.load_id} is {written - stamp:.3f}s behind its file's write time"
+
+
+def test_same_seed_live_runs_share_no_dlt_id(monkeypatch, capsys, tmp_path):
+    """Round-1 F3: two live runs with the same --seed on the same lake, the second starting from the
+    first's output, share no `_dlt_id`."""
+    lake = tmp_path / "lake"
+    _hand_written_lake(lake)
+    existing = {load.load_id for load in loads(lake)}
+    code, _, err = run(monkeypatch, capsys, lake, "--seed", "7", "--loads", "2")
+    assert code == 0, err
+    first = [load for load in loads(lake) if load.load_id not in existing]
+    assert len(first) == 2
+    existing |= {load.load_id for load in first}
+    code, _, err = run(monkeypatch, capsys, lake, "--seed", "7", "--loads", "2")
+    assert code == 0, err
+    second = [load for load in loads(lake) if load.load_id not in existing]
+    assert len(second) == 2
+    first_ids = {r[2] for load in first for r in load.raw}
+    second_ids = {r[2] for load in second for r in load.raw}
+    shared = first_ids & second_ids
+    assert not shared, f"{len(shared)} _dlt_ids in both runs, e.g. {sorted(shared)[:5]}"
+
+
+def test_latest_load_split_over_two_files(monkeypatch, capsys, tmp_path):
+    """Round-1 F4: when the latest load id is split over two Parquet files, the run starts from the rows
+    of both files."""
+    lake = tmp_path / "lake"
+    write_load(lake, load_id(1), [product(1000 + i, f"OL-{i:04d}", f"Older {i}") for i in range(50)])
+    part_a = [product(2000 + i, f"PA-{i:04d}", f"Part A {i}") for i in range(100)]
+    part_b = [product(3000 + i, f"PB-{i:04d}", f"Part B {i}") for i in range(100)]
+    write_load(lake, load_id(2), part_a)
+    write_load(lake, load_id(2), part_b)
+    existing = {load_id(1), load_id(2)}
+    code, _, err = run(monkeypatch, capsys, lake, "--seed", "7", "--loads", "1")
+    assert code == 0, err
+    added = [load for load in files(lake) if not any(load.name.startswith(e + ".") for e in existing)]
+    assert len(added) == 1, added
+    numbers = Load(added[0]).by_number().keys()
+    for label, part in (("A", part_a), ("B", part_b)):
+        held = numbers & {row["ProductNumber"] for row in part}
+        assert len(held) >= 0.9 * len(part), f"the new load holds {len(held)} of file {label}'s {len(part)} products"
+    assert not numbers & {f"OL-{i:04d}" for i in range(50)}, "the new load starts from the older load"
+
+
+def _day(value) -> date | None:
+    return None if value is None else date.fromisoformat(str(value)[:10])
+
+
+def test_changed_rows_end_on_or_after_start(seven):
+    """Round-1 F10: in every simulated load of seed 7, a row the simulator changed that holds a
+    SellStartDate and a SellEndDate, or a SellStartDate and a DiscontinuedDate, has the end on or after
+    the start. The snapshot's own rows are as served and not checked."""
+    lake, code = seven
+    assert code == 0, f"simulate --seed 7 --loads 6 ended with {code}"
+    bad = []
+    for found in diff(loads(lake)):
+        for number, (_, row, kind) in found["changed"].items():
+            start = _day(row.get("SellStartDate"))
+            if start is None:
+                continue
+            for end_key in ("SellEndDate", "DiscontinuedDate"):
+                end = _day(row.get(end_key))
+                if end is not None and end < start:
+                    bad.append(f"load {found['load'].load_id}: {number} ({kind}) {end_key} {end} < SellStartDate {start}")
+    assert not bad, "\n".join(bad)
+
+
+@pytest.mark.parametrize("lake_kind", ["empty", "live"])
+def test_no_leftover_files(monkeypatch, capsys, tmp_path, lake_kind):
+    """Round-1 F17: after a run, nothing but `*.parquet` landed files lies under the resource folder:
+    no temporary file is left behind."""
+    lake = tmp_path / "lake"
+    if lake_kind == "live":
+        _hand_written_lake(lake)
+    code, _, err = run(monkeypatch, capsys, lake, "--seed", "7", "--loads", "3")
+    assert code == 0, err
+    stray = [p for p in (lake / RESOURCE).rglob("*") if p.is_file() and p.suffix != ".parquet"]
+    assert not stray, stray
+    assert all(p.name.count(".") >= 2 for p in files(lake)), files(lake)
