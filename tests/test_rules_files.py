@@ -90,20 +90,20 @@ def test_task_test_rules_runs_the_claude_marked_tests():
     assert any(re.search(r"\bpytest\b.*-m[ =]['\"]?claude\b", c) for c in commands), commands
 
 
-def test_adr_0013_is_indexed_and_partly_supersedes_0012():
-    """AC10: ADR-0013 is in the index; ADR-0012's status names it."""
+def test_adr_0015_is_indexed_and_partly_supersedes_0012():
+    """AC10: ADR-0015 is in the index; ADR-0012's status names it."""
     adr = REPO / "docs" / "adr"
-    assert list(adr.glob("0013-*.md")), "no docs/adr/0013-*.md"
-    assert "[0013](0013-" in (adr / "README.md").read_text()
+    assert list(adr.glob("0015-*.md")), "no docs/adr/0015-*.md"
+    assert "[0015](0015-" in (adr / "README.md").read_text()
     (adr_0012,) = adr.glob("0012-*.md")
     status = next(line for line in adr_0012.read_text().splitlines() if line.startswith("**Status:**"))
     assert re.search(
-        r"partly superseded by (ADR-0013\b|\[ADR-0013\]\(0013-[^)]*\.md\))", status, re.IGNORECASE
+        r"partly superseded by (ADR-0015\b|\[ADR-0015\]\(0015-[^)]*\.md\))", status, re.IGNORECASE
     ), status
 
 
-def test_assumptions_a7_and_a8_are_recorded():
-    """AC10: docs/assumptions.md has rows A7 and A8."""
+def test_assumptions_a10_and_a11_are_recorded():
+    """AC10: docs/assumptions.md has harness rows A10 and A11."""
     text = (REPO / "docs" / "assumptions.md").read_text()
-    for row in ("A7", "A8"):
-        assert re.search(rf"^\| {row} ", text, re.MULTILINE), f"no row {row}"
+    for row in ("A10", "A11"):
+        assert re.search(rf"^\| {row} \|.*\| harness \|", text, re.MULTILINE), f"no harness row {row}"
