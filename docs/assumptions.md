@@ -17,6 +17,8 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A9 | The `main` ruleset is enforced: the repository is public, or its owner's plan includes rulesets on private repositories. | ci | Creating the ruleset is refused, or a pull request with a red `check` can be merged. |
 | A10 | Claude Code loads a `.claude/rules/*.md` file when the agent reads a file matching one of its `paths:` patterns, and reports it to the `InstructionsLoaded` hook. Claude Code drops a trailing `/**`, so `anchor/**` matches an `anchor` folder at any depth and `/anchor/**` only the root one (probed on 2.1.316). | harness | `uv run task test-rules` fails after a Claude Code update. |
 | A11 | Every file of a layer sits under a folder named after the layer, or under that layer's declarations (`contracts/`, `models/raw/`, `anchor/`). | harness | A layer's file is found outside them, and an agent edits it without its rules. |
+| A7 | `ModifiedDate` on TransactionHistories moves whenever a row is added or changed, and is never set earlier than the cursor already read. | ingest | A full pull holds a row, or a changed value, that the incremental loads never landed. |
+| A8 | dlt restores a resource's pipeline state, its incremental cursor included, from the lake's `_dlt/` when the run has no local dlt folder. | ingest | A second run in a fresh pod fetches the whole TransactionHistories feed again. |
 
 ## Measured (2026-10-30, the AdventureWorks OData feed)
 
@@ -29,3 +31,8 @@ What the design still assumes, and how you would know it stopped holding; then f
 ## Measured (2026-10-31, CI)
 
 - The `test` job on a GitHub-hosted `ubuntu-latest` (Ubuntu 26.04) runner: 118 passed, 1 skipped, job 3 min 47 s (PR #22, run 41252831815). The `check` job: 12 s.
+
+## Measured (2026-10-31, the AdventureWorks OData feed)
+
+- `$filter=ModifiedDate gt <date>` and `ge` work; `$orderby`, `$top`, `$select` and `$count=true` work.
+- TransactionHistories: 113,443 rows, `TransactionDate` 2013-07-31 to 2014-08-03, `ModifiedDate` equal to `TransactionDate` on the rows sampled; `TransactionType` `S` 74,575, `W` 31,002, `P` 7,866.

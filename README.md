@@ -10,8 +10,8 @@ lake (dlt, Parquet)  ->  raw  ->  conform  ->  integrate (Anchor, crt)  ->  serv
 
 | layer | what it is | declared in | written by |
 |---|---|---|---|
-| ingest | one dlt pipeline per resource, landing each row as JSON in hive-partitioned Parquet | `src/ingest` | `uv run ingest` |
-| raw, conform | a view over the lake, and a staged model appending every load, typed by its ODCS v3 contract | `contracts/` | `uv run conform generate` |
+| ingest | one dlt pipeline per resource, landing each row as JSON in hive-partitioned Parquet | `sources/<source>/` | `uv run ingest` |
+| raw, conform | a view over the lake, and a staged model appending every load, typed by its ODCS v3 contract | `contracts/<source>/` | `uv run conform generate` |
 | integrate | a concurrent-reliance-temporal Anchor model in Roenbaeck's naming, with its load log, integrity checks and schema tracking | `anchor/model.yaml`, `anchor/mappings/` | `uv run integrate generate` |
 | serve | a Puppini Unified Star Schema: staged bridges, dimensions with ghost rows, the bridge | `anchor/model.yaml` | `uv run serve generate` |
 
@@ -19,11 +19,16 @@ lake (dlt, Parquet)  ->  raw  ->  conform  ->  integrate (Anchor, crt)  ->  serv
 
 ```sh
 uv sync
-uv run task ingest                  # land the feed under ./lake (or $LAKE_ROOT)
+uv run task ingest                  # land every declared resource under ./lake (or $LAKE_ROOT)
 uv run task generate                # regenerate every layer's models
 uv run task check                   # fail if committed models drifted from the declarations
 uv run task build                   # build warehouse/dev.duckdb (TARGET=prod for the other)
 ```
+
+`uv run ingest --list` names the declared sources, and `uv run ingest SOURCE` (or
+`SOURCE__RESOURCE`) lands one; it exits 0 when everything it ran landed, 1 when some resource
+failed, 2 when none landed (ADR-0015). Adding an object to a source is one file in
+`sources/<source>/`, written as dlt's `rest_api` resource configuration (ADR-0013).
 
 `uv run task --list` shows every task. Integrate ignores `--full-refresh` and builds incrementally:
 its history is only appended to (ADR-0006).

@@ -15,3 +15,7 @@ Rejected: folders by step (`1_ingest` … `4_serve`), which spreads authored and
 ## Consequences
 
 Authored and generated files are apart at a glance, which story 2's `--check` relies on. Hand-written models live in folders without a generator's README.
+
+## Addendum 2026-10-31
+
+Ingest declarations live in a top-level `sources/`, and `sources/` and `contracts/` hold one folder per source with one file per resource (ADR-0014).
