@@ -32,3 +32,4 @@ Nygard's format: Context, Decision, Consequences, with a Status. One decision pe
 | [0026](0026-run-one-scheduled-run-at-a-time-queue-builds-and-time-every-step-out.md) | Run one scheduled run at a time, queue builds, and time every step out | Accepted (2026-11-01) |
 | [0027](0027-simulate-source-change-by-appending-seeded-changed-copies-of-the-latest-load.md) | Simulate source change by appending seeded, changed copies of the latest load | Accepted (2026-11-01) |
 | [0026](0026-let-a-generator-own-a-marked-region-of-a-hand-written-file.md) | Let a generator own a marked region of a hand-written file | Accepted (2026-11-01) |
+| [0027](0027-let-a-generator-own-a-marked-region-of-a-hand-written-file.md) | Let a generator own a marked region of a hand-written file | Accepted (2026-11-01) |

@@ -18,4 +18,4 @@ Every generator gets the check from the writer, including future ones. The check
 
 ## Addendum 2026-11-01
 
-The byte-for-byte check covers owned regions: a region `generate` would rewrite is reported as `changed <file>` with its diff, and a broken region is refused with exit 2 ([ADR-0026](0026-let-a-generator-own-a-marked-region-of-a-hand-written-file.md)).
+The byte-for-byte check covers owned regions: a region `generate` would rewrite is reported as `changed <file>` with its diff, and a broken region is refused with exit 2 ([ADR-0027](0027-let-a-generator-own-a-marked-region-of-a-hand-written-file.md)).
