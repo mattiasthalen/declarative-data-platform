@@ -1,10 +1,10 @@
-# ADR-0014 — Give each source a folder in `sources/` and `contracts/`, one file per resource
+# ADR-0017 — Give each source a folder in `sources/` and `contracts/`, one file per resource
 
 **Status:** Accepted (2026-10-31)
 
 ## Context
 
-ADR-0012 lays the repo out by kind, with declarations at the top level and code under `src/`, and kept contracts flat in `contracts/` (`adventure_works__products.yaml`). Ingest declarations (ADR-0013) are a new kind of declaration, and a second resource of the same source arrives with them.
+ADR-0012 lays the repo out by kind, with declarations at the top level and code under `src/`, and kept contracts flat in `contracts/` (`adventure_works__products.yaml`). Ingest declarations (ADR-0016) are a new kind of declaration, and a second resource of the same source arrives with them.
 
 ## Decision
 

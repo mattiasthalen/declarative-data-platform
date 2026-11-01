@@ -1,6 +1,7 @@
 ---
 paths:
   - "**/ingest/**"
+  - "sources/**"
 ---
 
 # Ingest rules

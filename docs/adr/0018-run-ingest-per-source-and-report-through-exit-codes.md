@@ -1,4 +1,4 @@
-# ADR-0015 — Run ingest per source, and report through exit codes 0, 1 and 2
+# ADR-0018 — Run ingest per source, and report through exit codes 0, 1 and 2
 
 **Status:** Accepted (2026-10-31)
 

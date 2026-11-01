@@ -18,4 +18,4 @@ Authored and generated files are apart at a glance, which story 2's `--check` re
 
 ## Addendum 2026-10-31
 
-Ingest declarations live in a top-level `sources/`, and `sources/` and `contracts/` hold one folder per source with one file per resource (ADR-0014).
+Ingest declarations live in a top-level `sources/`, and `sources/` and `contracts/` hold one folder per source with one file per resource (ADR-0017).

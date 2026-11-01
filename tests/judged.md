@@ -113,17 +113,17 @@ the repo against them.
 
 Pass when all of these hold:
 
-1. `docs/adr/` holds ADR-0013 to ADR-0016 with the drafts' title, status, context,
+1. `docs/adr/` holds ADR-0016 to ADR-0019 with the drafts' title, status, context,
    decision, rejected alternatives and consequences. Renumbering after a collision
    with a parallel story is fine when the links follow. A wording change is fine
-   only where the build proved a draft wrong (the plan names ADR-0016's
+   only where the build proved a draft wrong (the plan names ADR-0019's
    consequence sentence on repeats at the cursor boundary); it says what changed.
 2. `docs/adr/README.md` has the four index rows.
 3. ADR-0001 and ADR-0012 each end with the drafted `## Addendum 2026-10-31`, and
    their original text is otherwise unchanged.
 4. `docs/lexicon.md` has the entries *source* and *resource* as drafted, and no
    other entry changed.
-5. `docs/assumptions.md` has A7 and A8 as drafted, and the measured facts of
+5. `docs/assumptions.md` has A12 and A13 as drafted (drafted as A7 and A8, renumbered after collisions), and the measured facts of
    2026-10-31 (the `$filter`/`$orderby`/`$top`/`$select`/`$count` support and the
    TransactionHistories row counts and date range).
 6. Nothing in the repo's docs still says resources are declared in Python or that

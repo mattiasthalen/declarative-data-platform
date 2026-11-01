@@ -1,4 +1,4 @@
-# ADR-0016 — Fetch incremental resources from their last cursor value inclusive
+# ADR-0019 — Fetch incremental resources from their last cursor value inclusive
 
 **Status:** Accepted (2026-10-31)
 
@@ -14,4 +14,4 @@ Rejected: strictly greater than, which never lands a row that arrives later with
 
 ## Consequences
 
-No row is lost to a shared cursor value, and an unchanged row is not landed twice: dlt keeps a hash of each row at the last value in the same state. A row at the last cursor value that changed without moving its cursor lands again, which conform appends and Anchor treats by its rules (ADR-0006); a row changed at an older cursor value without moving it is never asked for again (A7). A run with nothing new lands no load. The state lives in `$LAKE_ROOT/_dlt/`, so a pod with no local dlt folder resumes from the lake, and deleting that folder makes the next load start over from the initial value.
+No row is lost to a shared cursor value, and an unchanged row is not landed twice: dlt keeps a hash of each row at the last value in the same state. A row at the last cursor value that changed without moving its cursor lands again, which conform appends and Anchor treats by its rules (ADR-0006); a row changed at an older cursor value without moving it is never asked for again (A12). A run with nothing new lands no load. The state lives in `$LAKE_ROOT/_dlt/`, so a pod with no local dlt folder resumes from the lake, and deleting that folder makes the next load start over from the initial value.

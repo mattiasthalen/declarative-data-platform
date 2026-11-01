@@ -27,8 +27,8 @@ uv run task build                   # build warehouse/dev.duckdb (TARGET=prod fo
 
 `uv run ingest --list` names the declared sources, and `uv run ingest SOURCE` (or
 `SOURCE__RESOURCE`) lands one; it exits 0 when everything it ran landed, 1 when some resource
-failed, 2 when none landed or the name is not declared (ADR-0015). Adding an object to a source is one file in
-`sources/<source>/`, written as dlt's `rest_api` resource configuration (ADR-0013).
+failed, 2 when none landed or the name is not declared (ADR-0018); through go-task, `task -x ingest:source -- SOURCE` keeps those codes, where plain `task` turns any failure into 201. Adding an object to a source is one file in
+`sources/<source>/`, written as dlt's `rest_api` resource configuration (ADR-0016).
 
 `uv run task --list` shows every task. Integrate ignores `--full-refresh` and builds incrementally:
 its history is only appended to (ADR-0006).

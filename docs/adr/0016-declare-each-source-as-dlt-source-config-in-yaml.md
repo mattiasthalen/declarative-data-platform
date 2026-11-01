@@ -1,4 +1,4 @@
-# ADR-0013 — Declare each source as its dlt source's own configuration, in YAML
+# ADR-0016 — Declare each source as its dlt source's own configuration, in YAML
 
 **Status:** Accepted (2026-10-31)
 

@@ -1,15 +1,15 @@
-"""Land each declared resource in the lake, one dlt pipeline per resource (ADR-0001, ADR-0013).
+"""Land each declared resource in the lake, one dlt pipeline per resource (ADR-0001, ADR-0016).
 
 A source is a folder ``sources/<source>/``: ``_source.yaml`` holds its dlt source's configuration
 under the source kind's name (``rest_api:``), less the resources, and every other ``*.yaml`` file
-is one resource entry named for the file (ADR-0014). Each resource lands as
+is one resource entry named for the file (ADR-0017). Each resource lands as
 ``$LAKE_ROOT/<source>__<resource>/date=YYYY-MM-DD/hour=HH/<load_id>.<file_id>.parquet``, every row
 whole as the JSON text the feed served in a column named ``data``, beside dlt's ``_dlt_load_id``
 and ``_dlt_id``. What a declaration cannot change is applied here: rows land whole, loads are
 appended, and no request follows a redirect.
 
 ``uv run ingest [--list | SOURCE | SOURCE__RESOURCE]`` exits 0 when every resource it ran landed,
-1 when some landed and some failed, 2 when none landed or a name is unknown (ADR-0015).
+1 when some landed and some failed, 2 when none landed or a name is unknown (ADR-0018).
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ import yaml
 SOURCES = Path("sources")
 SOURCE_FILE = "_source.yaml"
 # snake_case without a double underscore, which separates the source from the resource in names
-# built from both (ADR-0002, ADR-0014).
+# built from both (ADR-0002, ADR-0017).
 NAME = re.compile(r"[a-z][a-z0-9]*(_[a-z0-9]+)*")
 
 # dlt writes under <bucket>/<dataset>/<layout>. Its own bookkeeping lands in the dataset folder,
@@ -271,7 +271,7 @@ def land(source: Source, resource_name: str) -> None:
     destination = dlt.destinations.filesystem(bucket_url=lake_root().as_uri(), layout=LAYOUT)
     pipeline_name = f"{source.name}__{resource_name}"
     pipeline = dlt.pipeline(pipeline_name=pipeline_name, destination=destination, dataset_name=DATASET)
-    # The lake holds the cursor (ADR-0016). Local state left by an earlier run would win over a
+    # The lake holds the cursor (ADR-0019). Local state left by an earlier run would win over a
     # lake that lost its own, so the pipeline starts from what the lake holds. A package an
     # interrupted run left half loaded is kept: run() finishes it first, rewriting the files it
     # already wrote, where dropping it would leave them to be landed again under a new load id.

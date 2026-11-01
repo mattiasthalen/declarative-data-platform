@@ -1,5 +1,5 @@
 # What every adventure_works resource shares: dlt's rest_api source configuration, verbatim, less
-# its resources, which are the other files here (ADR-0013, ADR-0014). `odata` is registered in
+# its resources, which are the other files here (ADR-0016, ADR-0017). `odata` is registered in
 # src/ingest: it follows @odata.nextLink only to the feed's own origin.
 rest_api:
   client:

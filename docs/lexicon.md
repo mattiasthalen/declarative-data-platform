@@ -2,9 +2,9 @@
 
 The words someone needs defined to talk about using or developing the platform. A term earns an entry only if it is language rather than code, needs defining here, and is the one word for its concept. Anchor Modeling's own terms (anchor, attribute, knot, tie, posit, annex, positor, reliability) mean what [ANCHOR.md](https://github.com/Roenbaeck/anchor/blob/master/docs/ANCHOR.md) says and are not repeated.
 
-**source** — A system that feeds the lake, such as `adventure_works`, declared once in its own folder of `sources/` and `contracts/`. Distinct from the dlt source it is declared with (`rest_api`), which is how it is read. See [ADR-0014](adr/0014-give-each-source-a-folder-with-one-file-per-resource.md).
+**source** — A system that feeds the lake, such as `adventure_works`, declared once in its own folder of `sources/` and `contracts/`. Distinct from the dlt source it is declared with (`rest_api`), which is how it is read. See [ADR-0017](adr/0017-give-each-source-a-folder-with-one-file-per-resource.md).
 
-**resource** — One object a *source* serves, such as its products, landed by its own pipeline into its own lake folder and named `<source>__<resource>`. Distinct from dlt's resource, the code that yields rows. See [ADR-0015](adr/0015-run-ingest-per-source-and-report-through-exit-codes.md).
+**resource** — One object a *source* serves, such as its products, landed by its own pipeline into its own lake folder and named `<source>__<resource>`. Distinct from dlt's resource, the code that yields rows. See [ADR-0018](adr/0018-run-ingest-per-source-and-report-through-exit-codes.md).
 
 **load** — One extraction of one *resource*, as it lands in the lake, named by its dlt load id. Distinct from *batch*: one *batch* can apply several loads.
 

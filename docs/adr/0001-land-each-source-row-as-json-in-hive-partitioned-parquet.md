@@ -24,4 +24,4 @@ An OData next link, resolved against the page it came from, is followed only to 
 
 ## Addendum 2026-10-31
 
-The resources are now declared, not written in Python: ADR-0013 (dlt's own configuration in YAML), ADR-0014 (`sources/<source>/`, one file per resource), ADR-0015 (per-source runs and exit codes 0, 1, 2). The next-link origin guard and the refusal of redirects are applied in code to every declared resource. Every load is appended.
+The resources are now declared, not written in Python: ADR-0016 (dlt's own configuration in YAML), ADR-0017 (`sources/<source>/`, one file per resource), ADR-0018 (per-source runs and exit codes 0, 1, 2). The next-link origin guard and the refusal of redirects are applied in code to every declared resource. Every load is appended.

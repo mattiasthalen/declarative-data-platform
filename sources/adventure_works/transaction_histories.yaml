@@ -8,7 +8,7 @@
 #     calendar month: month of TransactionDate (business date, not ModifiedDate or extraction).
 #     product line: the product's line as of the transaction date, trimmed code, empty its own group.
 #
-# Fetched incrementally from the last ModifiedDate seen, inclusive (ADR-0016).
+# Fetched incrementally from the last ModifiedDate seen, inclusive (ADR-0019).
 endpoint:
   path: TransactionHistories
   params:
