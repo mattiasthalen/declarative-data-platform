@@ -208,7 +208,7 @@ def schema_file(name: str, contract: dict, properties: list[dict]) -> str:
 
 
 def contracts(root: Path) -> list[dict]:
-    """Every contract, checked against its place in contracts/<source>/, in file-name order."""
+    """Every contract, checked against its place in contracts/<source>/, in path order."""
     found = []
     for path in sorted((root / CONTRACTS).glob("*.yaml")):
         raise ContractError(f"{path}: a contract lives in its source's folder, contracts/<source>/")
@@ -250,6 +250,7 @@ def diagram(contracts: list[dict]) -> str:
     for contract in contracts:
         obj = contract["schema"][0]
         keys = [p for p in obj.get("properties") or [] if p.get("primaryKey")]
+        keys.sort(key=lambda p: p.get("primaryKeyPosition", 0))  # ODCS orders a composite key by it
         entities.append((obj["name"], [erd.row(TYPES[p["logicalType"]] or "varchar", p["name"], "PK") for p in keys]))
     return erd.diagram(entities)
 
