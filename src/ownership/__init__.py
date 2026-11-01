@@ -5,12 +5,16 @@ that the generator wrote. It rewrites its folders whole: files it no longer emit
 removed, and a folder it no longer emits is removed with them. It refuses, before writing
 anything, any folder it would write that has no README or another generator's.
 
+A generator can also own a region of a hand-written file: the text between a begin and an
+end marker, HTML comments the file's author placed once. It rewrites only that text.
+
 With ``--check`` it writes nothing and reports the same changes as drift, byte for byte.
 """
 
 from __future__ import annotations
 
 import difflib
+import re
 import shutil
 import sys
 from dataclasses import dataclass
@@ -21,7 +25,7 @@ MARKER = "README.md"
 
 
 class Refused(Exception):
-    """A folder the generator would write belongs to someone else."""
+    """A folder the generator would write belongs to someone else, or a region it owns is broken."""
 
 
 def marker(generator: str, source: str) -> str:
@@ -68,10 +72,55 @@ class Drift:
     generated: str | None = None
 
 
-def drift(root: Path, generator: str, source: str, packages: dict[Path, dict[str, str]]) -> list[Drift]:
-    """Every byte ``generator`` would change under models/ to make ``packages`` what it owns.
+def _marker(family: str, name: str, side: str) -> re.Pattern:
+    """An HTML comment naming ``<family>:<name> <side>``; the rest of the comment is the author's."""
+    inside = r"(?:(?!-->).)*?"
+    return re.compile(rf"<!--{inside}\b{re.escape(family)}:{name}\s+{side}\b{inside}-->", re.DOTALL)
 
-    Raises Refused, before anything else, for a folder it would write but does not own.
+
+def _spliced(root: Path, file: Path, regions: dict[str, str]) -> tuple[bytes, str]:
+    """``file`` as committed, and as it reads with each region's text between its markers.
+
+    A region is named ``<family>:<name>``. Raises Refused for a missing file or a broken region:
+    a marker missing or repeated, an end before its begin, or a marker of the same family inside.
+    """
+    path = root / file
+    if not path.is_file():
+        raise Refused(f"{file.as_posix()}: missing")
+    committed = path.read_bytes()
+    text = committed.decode("utf-8")
+    for region, generated in regions.items():
+        family, name = region.split(":", 1)
+        found = {}
+        for side in ("begin", "end"):
+            matches = list(_marker(family, re.escape(name), side).finditer(text))
+            if len(matches) != 1:
+                problem = "missing" if not matches else f"appears {len(matches)} times"
+                raise Refused(f"{file.as_posix()}: {region} {side} {problem}")
+            found[side] = matches[0]
+        begin, end = found["begin"], found["end"]
+        if end.start() < begin.end():
+            raise Refused(f"{file.as_posix()}: {region} ends before it begins")
+        held = text[begin.end() : end.start()]
+        for side in ("begin", "end"):
+            if foreign := _marker(family, r"[\w-]+", side).search(held):
+                raise Refused(f"{file.as_posix()}: {region} holds another marker, {foreign.group(0)}")
+        text = text[: begin.end()] + generated + text[end.start() :]
+    return committed, text
+
+
+def drift(
+    root: Path,
+    generator: str,
+    source: str,
+    packages: dict[Path, dict[str, str]],
+    regions: dict[Path, dict[str, str]] | None = None,
+) -> list[Drift]:
+    """Every byte ``generator`` would change to make ``packages`` and ``regions`` what it owns.
+
+    ``regions`` maps a hand-written file to the text of each region it owns there.
+    Raises Refused, before anything else, for a folder it would write but does not own,
+    and for a file whose regions are broken.
     """
     refused = [
         f"{folder} ({'no marker' if owner(root / folder) is None else 'owned by ' + owner(root / folder)})"
@@ -80,6 +129,7 @@ def drift(root: Path, generator: str, source: str, packages: dict[Path, dict[str
     ]
     if refused:
         raise Refused(f"{generator} does not own: " + ", ".join(refused))
+    spliced = {file: _spliced(root, file, owned) for file, owned in sorted((regions or {}).items())}
 
     found = [Drift("stale", folder) for folder in sorted(owned(root, generator) - set(packages))]
     readme = marker(generator, source)
@@ -95,6 +145,9 @@ def drift(root: Path, generator: str, source: str, packages: dict[Path, dict[str
                 found.append(Drift("missing", folder / name, generated=text))
             elif (committed := target.read_bytes()) != text.encode("utf-8"):
                 found.append(Drift("changed", folder / name, committed=committed, generated=text))
+    for file, (committed, text) in spliced.items():
+        if committed != text.encode("utf-8"):
+            found.append(Drift("changed", file, committed=committed, generated=text))
     return sorted(found, key=lambda d: d.path.as_posix())
 
 
@@ -153,15 +206,23 @@ def describe(drifts: list[Drift]) -> str:
     return "\n".join(out)
 
 
-def run(generator: str, source: str, packages: dict[Path, dict[str, str]], *, check: bool = False) -> int:
-    """Write ``packages`` from the current directory, or with ``check`` report what writing would change.
+def run(
+    generator: str,
+    source: str,
+    packages: dict[Path, dict[str, str]],
+    regions: dict[Path, dict[str, str]] | None = None,
+    *,
+    check: bool = False,
+) -> int:
+    """Write ``packages`` and ``regions`` from the current directory, or with ``check`` report
+    what writing would change.
 
-    Exit codes: 0 written or clean; 1 drift found by ``check``; 2 a refused folder, so a check
-    tells broken input apart from drift.
+    Exit codes: 0 written or clean; 1 drift found by ``check``; 2 a refused folder or a broken
+    region, so a check tells broken input apart from drift.
     """
     root = Path.cwd()
     try:
-        drifts = drift(root, generator, source, packages)
+        drifts = drift(root, generator, source, packages, regions)
     except Refused as refusal:
         print(refusal, file=sys.stderr)
         return 2
