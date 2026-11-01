@@ -1,2 +1,5 @@
 # Generated models are compared byte for byte (ADR-0013): never convert their line endings.
 models/** -text
+
+# The README is spliced byte for byte by the generators that own its diagram regions.
+README.md -text
