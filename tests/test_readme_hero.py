@@ -136,6 +136,8 @@ def test_hero_erd_untouched():
     base = os.environ.get("HERO_BASE")
     if not base:
         pytest.skip("HERO_BASE is unset: set it to main's commit from before story #37 (92a1fa2)")
+    # git would read a leading "-" as an option and a ":" or space as part of the path.
+    assert re.fullmatch(r"[^\s:-][^\s:]*", base), f"HERO_BASE={base!r} is not a plain revision"
     before = subprocess.run(
         ["git", "show", f"{base}:README.md"], cwd=REPO, capture_output=True, check=True
     ).stdout.decode("utf-8")
@@ -176,6 +178,8 @@ def test_hero_svg_form():
 
 URL = re.compile(r"""url\(\s*(['"]?)(.*?)\1\s*\)""", re.DOTALL | re.IGNORECASE)
 FORBIDDEN = {"script", "foreignObject", "image"}
+ANIMATIONS = {"set", "animate"}
+ANIMATED_VALUES = ("to", "from", "by", "values")
 
 
 def local_reference(ref: str) -> bool:
@@ -188,14 +192,26 @@ def styles(root: ET.Element) -> str:
 
 
 def test_hero_svg_fetches_nothing():
-    """AC4, EC5: every href and url(...) is a #fragment or a data: URI; no @import; no <script>,
-    <foreignObject>, <image> or on* attribute. The failure names the offending reference."""
+    """AC4, EC5: every href and url(...) is a #fragment or a data: URI, and so is every value a
+    <set> or <animate> gives an href; no @import, no <?xml-stylesheet?>, no backslash escape in CSS
+    (which could spell url); no <script>, <foreignObject>, <image> or on* attribute. The failure
+    names the offending reference."""
     root = hero()
     offending: list[str] = []
+    # ElementTree drops processing instructions, so the raw text is searched for this one.
+    for stylesheet in re.finditer(r"<\?xml-stylesheet\b[^>]*>?", HERO.read_text(encoding="utf-8"), re.IGNORECASE):
+        offending.append(f"processing instruction {stylesheet.group(0)[:80]}")
     for el in root.iter():
         tag = local(el.tag)
         if tag in FORBIDDEN:
             offending.append(f"<{tag}> element")
+        if tag in ANIMATIONS and local(el.get("attributeName", "").strip()).endswith("href"):
+            for name in (name for name in ANIMATED_VALUES if name in el.attrib):
+                for value in el.get(name).split(";"):
+                    if not local_reference(value):
+                        offending.append(f"<{tag}> {name}={value.strip()!r} for {el.get('attributeName')}")
+        if "\\" in el.get("style", ""):
+            offending.append(f"<{tag}> style with a CSS escape: {el.get('style')[:80]!r}")
         for name, value in el.attrib.items():
             attr = local(name)
             if attr.lower().startswith("on"):
@@ -211,6 +227,8 @@ def test_hero_svg_fetches_nothing():
             offending.append(f"<style> url({url.group(2)[:80]})")
     for imported in re.finditer(r"@import[^;]*;?", css, re.IGNORECASE):
         offending.append(f"<style> {imported.group(0)[:80]}")
+    for escape in re.finditer(r".{0,20}\\.{0,20}", css):
+        offending.append(f"<style> CSS escape {escape.group(0)!r}")
     assert not offending, "docs/hero.svg fetches from outside:\n" + "\n".join(offending)
 
 
@@ -268,49 +286,59 @@ def open_font(family: str, data: bytes):
         raise AssertionError(f"the embedded {family} font does not open as a font: {error!r}") from error
 
 
-def class_families(root: ET.Element) -> dict[str, str]:
-    """CSS class -> font-family, from simple `.class { font-family: ... }` rules in <style>."""
+def class_values(root: ET.Element, prop: str) -> dict[str, str]:
+    """CSS class -> the value of `prop`, from simple `.class { prop: ... }` rules in <style>."""
     css = FACE.sub("", re.sub(r"/\*.*?\*/", "", styles(root), flags=re.DOTALL))
-    families: dict[str, str] = {}
+    values: dict[str, str] = {}
     for selectors, body in RULE.findall(css):
-        family = declaration(body, "font-family")
-        if not family:
+        value = declaration(body, prop)
+        if not value:
             continue
         for selector in selectors.split(","):
             for name in re.findall(r"\.([\w-]+)", selector):
-                families[name] = first_family(family)
-    return families
+                values[name] = value
+    return values
 
 
-def own_family(el: ET.Element, classes: dict[str, str]) -> str | None:
-    style = declaration(el.get("style", ""), "font-family")
+def own_value(el: ET.Element, prop: str, classes: dict[str, str]) -> str | None:
+    """The element's own `prop`, by SVG's cascade: an inline style beats a class rule, which
+    beats the presentation attribute."""
+    style = declaration(el.get("style", ""), prop)
     if style:
-        return first_family(style)
-    if el.get("font-family"):
-        return first_family(el.get("font-family"))
+        return style
     for name in reversed(el.get("class", "").split()):
         if name in classes:
             return classes[name]
-    return None
+    return el.get(prop) or None
 
 
-def text_runs(root: ET.Element) -> list[tuple[str, str | None]]:
-    """(characters, the font-family that draws them) for every run of text in a <text>,
-    with font-family inherited down from ancestors and overridden by <tspan>s."""
-    classes = class_families(root)
-    runs: list[tuple[str, str | None]] = []
+WEIGHTS = {"normal": "400", "bold": "700"}
+NOT_DRAWN = {"title", "desc"}
 
-    def walk(el: ET.Element, inherited: str | None, inside_text: bool) -> None:
-        family = own_family(el, classes) or inherited
+
+def text_runs(root: ET.Element) -> list[tuple[str, str | None, str | None]]:
+    """(characters, the font-family that draws them, their font-weight) for every run of text in
+    a <text>, from every descendant but <title> and <desc>, with both inherited down from
+    ancestors and overridden by descendants."""
+    families = class_values(root, "font-family")
+    weights = class_values(root, "font-weight")
+    runs: list[tuple[str, str | None, str | None]] = []
+
+    def walk(el: ET.Element, family: str | None, weight: str | None, inside_text: bool) -> None:
+        own = own_value(el, "font-family", families)
+        family = first_family(own) if own else family
+        own = own_value(el, "font-weight", weights)
+        weight = WEIGHTS.get(own.strip().lower(), own.strip()) if own else weight
         inside = inside_text or local(el.tag) == "text"
-        if inside and local(el.tag) in ("text", "tspan") and el.text:
-            runs.append((el.text, family))
+        if inside and el.text:
+            runs.append((el.text, family, weight))
         for child in el:
-            walk(child, family, inside)
+            if not (inside and local(child.tag) in NOT_DRAWN):
+                walk(child, family, weight, inside)
             if inside and child.tail:
-                runs.append((child.tail, family))
+                runs.append((child.tail, family, weight))
 
-    walk(root, None, False)
+    walk(root, None, None, False)
     return runs
 
 
@@ -326,13 +354,24 @@ def test_hero_fonts_embedded():
     assert sorted(fonts) == sorted(FONTS), f"docs/hero.svg embeds {sorted(fonts)}, expected exactly {sorted(FONTS)}"
     for family, weight in FONTS.items():
         assert fonts[family][0] == weight, f"the @font-face for {family} has weight {fonts[family][0]}, expected {weight}"
-        open_font(family, fonts[family][1])
+        font = open_font(family, fonts[family][1])
+        assert font.flavor == "woff2", f"the embedded {family} font is {font.flavor or 'not compressed'}, expected woff2"
+        assert "OS/2" in font and str(font["OS/2"].usWeightClass) == weight, (
+            f"the embedded {family} font has weight class "
+            f"{font['OS/2'].usWeightClass if 'OS/2' in font else None}, expected {weight}"
+        )
 
     runs = text_runs(root)
-    words = " ".join(" ".join(chars.split()) for chars, _ in runs)
+    for chars, family, weight in runs:
+        if family in fonts and weight is not None:
+            assert weight == fonts[family][0], (
+                f"the text {' '.join(chars.split())!r} is set in {family} at weight {weight}, but the embedded "
+                f"{family} is weight {fonts[family][0]}: the browser would fake it"
+            )
+    words = " ".join(" ".join(chars.split()) for chars, _, _ in runs)
     for phrase in ("DECLARATIVE", "DATA PLATFORM"):
         assert phrase in words.upper(), f"docs/hero.svg's text does not hold the wordmark {phrase!r}"
-    for chars, family in runs:
+    for chars, family, _ in runs:
         normal = " ".join(chars.split())
         if re.search(r"DECLARATIVE|DATA|PLATFORM", normal, re.IGNORECASE) and "·" not in normal:
             assert family == "Spectral", f"the wordmark text {normal!r} is set in {family!r}, expected Spectral"
@@ -345,7 +384,7 @@ def test_hero_fonts_embedded():
         line = " ".join("".join(el.itertext()).split())
         assert line == "ingest · conform · integrate · serve", f"the layer line reads {line!r}"
     layer_runs = [
-        (chars, family) for chars, family in runs
+        (chars, family) for chars, family, _ in runs
         if re.search(r"ingest|conform|integrate|serve|·", chars)
     ]
     for chars, family in layer_runs:
@@ -360,7 +399,7 @@ def test_hero_fonts_cover_text():
     fonts = embedded_fonts(root)
     cmaps = {family: set(open_font(family, data).getBestCmap() or {}) for family, (_, data) in fonts.items()}
     missing: list[str] = []
-    for chars, family in text_runs(root):
+    for chars, family, _ in text_runs(root):
         for char in chars:
             if char.isspace():
                 continue

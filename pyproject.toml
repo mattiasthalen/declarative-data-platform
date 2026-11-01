@@ -1,7 +1,7 @@
 [project]
 name = "declarative-data-platform"
 version = "0.1.0"
-description = "Declarations in, a lake through Anchor to a Unified Star Schema out."
+description = "Declarations in, structure out: a lake through Anchor to a Unified Star Schema today."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = ["pyyaml>=6"]

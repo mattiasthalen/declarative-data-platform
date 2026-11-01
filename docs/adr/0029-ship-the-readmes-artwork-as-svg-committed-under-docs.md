@@ -4,13 +4,13 @@
 
 ## Context
 
-Epic 5 puts artwork in the README: a hero image (#37), the same scene in motion (#38) and a longer explainer linked from the README (#39). GitHub shows a README image through an image tag behind its image proxy. It plays video inline only from its own uploads, which live outside the repository. The README is reviewed as text in pull requests, and its hero is shown at whatever width the reader's screen gives it, on high-density screens too.
+Epic 5 puts artwork in the README: a hero image (#37), the same scene in motion (#38) and a longer explainer linked from the README (#39). GitHub shows a README image through an image tag, serving a relative one from the repository. It plays video inline only from its own uploads, which live outside the repository. The README is reviewed as text in pull requests, and its hero is shown at whatever width the reader's screen gives it, on high-density screens too.
 
 ## Decision
 
 The README's artwork is SVG, one file per image, committed under `docs/` and referenced from the README by a relative path.
 
-Rejected: PNG, which is soft when GitHub scales it unless exported at two or three times its size, cannot be animated from the same source for #38, and changes as an opaque binary in review. PNG stays the right format for the repository's social preview, which GitHub takes only as PNG or JPG and which is a repository setting, not a file in the repo. Video uploaded to GitHub, which plays inline but lives outside the repository, so it cannot be reviewed, versioned or rebuilt with the README.
+Rejected: PNG, which is soft when GitHub scales it unless exported at two or three times its size, cannot be animated from the same source for #38, and changes as an opaque binary in review. PNG stays the right format for the repository's social preview, which GitHub takes only as PNG, JPG or GIF and which is a repository setting, not a file in the repo. Video uploaded to GitHub, which plays inline but lives outside the repository, so it cannot be reviewed, versioned or rebuilt with the README.
 
 ## Consequences
 

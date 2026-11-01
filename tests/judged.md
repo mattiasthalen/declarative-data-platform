@@ -284,4 +284,4 @@ Screenshots of the branch's README on github.com: light and dark theme, desktop 
 1. The README opens with the hero; no `# declarative-data-platform` heading above or below it.
 2. The wordmark is in Spectral, the layer line in Inter: neither falls back to Georgia, Times or Arial.
 3. On the light theme the hero reads as a dark card with rounded corners; on dark it sits on the page with no seam but its corners.
-4. At 390px the whole banner is visible, nothing cropped, the wordmark legible.
+4. At 390px the whole banner is visible, nothing cropped, and both the wordmark and the layer line are legible.
