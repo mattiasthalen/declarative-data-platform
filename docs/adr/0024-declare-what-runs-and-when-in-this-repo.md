@@ -14,4 +14,4 @@ Rejected: the infra repo owning deployments and schedules (when the platform run
 
 ## Consequences
 
-A change to what runs or when is one pull request here. The infra must supply a work pool whose workers can reach the repo, the lake and the DuckDB file (A18).
+A change to what runs or when is one pull request here. The infra must supply a work pool whose workers can reach the repo, the lake and the DuckDB file (A18). The commands are flow parameters, so tests can run fakes; the cost is that whoever can create a flow run on the server can run any command on its workers, which makes the infra's API access control the boundary.

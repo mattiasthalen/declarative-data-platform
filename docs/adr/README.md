@@ -29,3 +29,4 @@ Nygard's format: Context, Decision, Consequences, with a Status. One decision pe
 | [0023](0023-orchestrate-with-prefect.md) | Orchestrate with Prefect | Accepted (2026-11-01) |
 | [0024](0024-declare-what-runs-and-when-in-this-repo.md) | Declare what runs and when in this repo; the infra owns only infrastructure | Accepted (2026-11-01) |
 | [0025](0025-keep-one-uv-project-with-orchestrate-as-a-dependency-group.md) | Keep one uv project, with orchestrate as a dependency group | Accepted (2026-11-01) |
+| [0026](0026-run-one-scheduled-run-at-a-time-queue-builds-and-time-every-step-out.md) | Run one scheduled run at a time, queue builds, and time every step out | Accepted (2026-11-01) |

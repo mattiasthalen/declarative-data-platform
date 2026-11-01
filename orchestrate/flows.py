@@ -14,18 +14,23 @@ import signal
 import subprocess
 from dataclasses import dataclass
 
-from prefect import flow, get_run_logger
+from prefect import flow, get_client, get_run_logger
 from prefect.client.schemas.objects import FlowRun
 from prefect.deployments import run_deployment
-from prefect.states import Completed, Failed, State
+from prefect.states import Cancelled, Completed, Failed, State
 
 LIST_COMMAND = ["uv", "run", "task", "ingest:list"]
 # `-x` passes the command's own exit status through; without it go-task reports every
 # failure as 201, and a partial landing (1) could not be told from none (2).
 INGEST_COMMAND = ["uv", "run", "task", "-x", "ingest:source", "--"]
 BUILD_COMMAND = ["uv", "run", "task", "-x", "build"]
+LIST_TIMEOUT_SECONDS = 5 * 60
 INGEST_TIMEOUT_SECONDS = 20 * 60
 BUILD_TIMEOUT_SECONDS = 30 * 60
+# How long `run` waits beyond a child's own timeout for it to reach a final state. A child
+# that never starts (no free worker, a pool limit `run` itself fills) would otherwise hold
+# `run`, and with it the deployment's only concurrency slot, for good.
+START_GRACE_SECONDS = 10 * 60
 
 # Ingest's exit statuses (ADR-0018): 0 every resource landed, 1 some did, 2 none.
 LANDED_ALL, LANDED_SOME = 0, 1
@@ -41,11 +46,13 @@ class Outcome:
     stderr: str
 
 
-def run_command(command: list[str], timeout: float | None = None) -> Outcome:
+def run_command(command: list[str], timeout: float) -> Outcome:
     """Run ``command`` without a shell, from the current directory.
 
-    Past ``timeout`` the whole process group is killed: `uv run task` starts grandchildren
-    (task, dlt, dbt) that killing `uv` alone would leave running.
+    The command gets its own process group, killed whole past ``timeout`` and whenever the
+    flow is interrupted: `uv run task` starts grandchildren (task, dlt, dbt), and Prefect's
+    cancellation signals only the flow's own group, so a cancelled build would otherwise
+    leave dbt running and holding the DuckDB file.
     """
     proc = subprocess.Popen(
         command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
@@ -56,6 +63,10 @@ def run_command(command: list[str], timeout: float | None = None) -> Outcome:
         os.killpg(proc.pid, signal.SIGKILL)
         stdout, stderr = proc.communicate()
         return Outcome(None, stdout, stderr)
+    except BaseException:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
+        raise
     return Outcome(proc.returncode, stdout, stderr)
 
 
@@ -102,8 +113,28 @@ def build(
 
 
 def landed(child: FlowRun) -> bool:
-    state = child.state
-    return state is not None and (state.is_completed() or state.name == PARTLY_LANDED)
+    return child.state.is_completed() or child.state.name == PARTLY_LANDED
+
+
+async def run_child(deployment: str, parameters: dict, timeout_seconds: float) -> FlowRun:
+    """Start a flow run of ``deployment`` under the current flow and wait for it to end.
+
+    One still not final after its own timeout plus START_GRACE_SECONDS is cancelled, and
+    returned as it then stands, not final, so the caller counts it as failed.
+    """
+    child = await run_deployment(
+        deployment,
+        parameters={**parameters, "timeout_seconds": timeout_seconds},
+        timeout=timeout_seconds + START_GRACE_SECONDS,
+        as_subflow=True,
+    )
+    if not child.state.is_final():
+        async with get_client() as client:
+            await client.set_flow_run_state(
+                child.id, Cancelled(message="never finished within its timeout"), force=True
+            )
+            child = await client.read_flow_run(child.id)
+    return child
 
 
 @flow(name="run")
@@ -116,7 +147,9 @@ async def run(
     build_timeout_seconds: float = BUILD_TIMEOUT_SECONDS,
 ) -> State:
     """One scheduled run: every source ingested in its own flow run, then one build."""
-    listing = await asyncio.to_thread(run_command, list_command)
+    listing = await asyncio.to_thread(run_command, list_command, LIST_TIMEOUT_SECONDS)
+    if listing.exit is None:
+        return Failed(message=f"listing the sources timed out after {LIST_TIMEOUT_SECONDS}s")
     if listing.exit != 0:
         return Failed(
             message=f"listing the sources failed (exit {listing.exit}): {listing.stderr.strip()}"
@@ -127,15 +160,10 @@ async def run(
 
     children = await asyncio.gather(
         *(
-            run_deployment(
+            run_child(
                 "ingest-source/ingest-source",
-                parameters={
-                    "source": source,
-                    "command": ingest_command,
-                    "timeout_seconds": ingest_timeout_seconds,
-                },
-                timeout=None,
-                as_subflow=True,
+                {"source": source, "command": ingest_command},
+                ingest_timeout_seconds,
             )
             for source in sources
         )
@@ -146,11 +174,8 @@ async def run(
     if not any(landed(child) for child in children):
         return Failed(message="; ".join(problems) + "; no source landed, so no build")
 
-    built = await run_deployment(
-        "build/build",
-        parameters={"target": target, "command": build_command, "timeout_seconds": build_timeout_seconds},
-        timeout=None,
-        as_subflow=True,
+    built = await run_child(
+        "build/build", {"target": target, "command": build_command}, build_timeout_seconds
     )
     if not built.state.is_completed():
         problems.append(f"build {built.state.name}: {built.state.message}")

@@ -33,14 +33,16 @@ failed, 2 when none landed or the name is not declared (ADR-0018); through go-ta
 ### On a schedule
 
 `orchestrate/` runs the platform hourly with Prefect: a `run` flow lists the sources, ingests
-each in its own flow run (its own pod on a Kubernetes work pool), then builds `prod` once if any
+each in its own flow run (its own process on a local work pool), then builds `prod` once if any
 source landed. It ends Failed, naming the source, when anything did not land (ADR-0022). Every
 step is a Taskfile task, so another orchestrator could call the same ones (ADR-0020).
 
 This repo declares what runs and when: the flows and `orchestrate/prefect.yaml` (deployments,
 the `0 * * * *` UTC schedule, one run and one build at a time). The infra provides the Prefect
-server, a work pool and its workers, and those workers need the repo, the lake and the DuckDB
-file (ADR-0024). To run it on your machine, with three terminals in the repo root:
+server, a work pool and its workers. Flow runs start in the directory the deploy ran from, so
+those workers need the repo at that same path, with the lake and the DuckDB file beside it, and
+the pool must let at least two flow runs run at once (A18). Kubernetes pods, which would need
+the repo and shared storage brought to them, are not set up yet (ADR-0024). To run it on your machine, with three terminals in the repo root:
 
 ```sh
 uv run task orchestrate:server                       # 1: a local Prefect server on :4200
@@ -54,8 +56,8 @@ uv run prefect deployment run run/run                #    optional: one run now,
 ```
 
 The UI at http://127.0.0.1:4200 shows each run, its sources and its build. Against the
-infra's server, set `PREFECT_API_URL` and `ORCHESTRATE_WORK_POOL` to its values and run only
-`orchestrate:deploy`. Scheduled runs never regenerate models: that stays a commit-time act.
+infra's server, set `PREFECT_API_URL` and `ORCHESTRATE_WORK_POOL` to its values and run
+`orchestrate:deploy` from the checkout its workers use. Scheduled runs never regenerate models: that stays a commit-time act.
 
 `uv run task --list` shows every task. Integrate ignores `--full-refresh` and builds incrementally:
 its history is only appended to (ADR-0006).

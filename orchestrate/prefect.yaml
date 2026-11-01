@@ -3,16 +3,13 @@
 #
 #   ORCHESTRATE_WORK_POOL=<pool> uv run prefect --no-prompt deploy --all --prefect-file orchestrate/prefect.yaml
 #
-# `{{ $VAR }}` is read from the deploying shell's environment when it deploys.
+# `{{ $VAR }}` is read from the deploying shell's environment when it deploys. With no pull
+# steps declared, Prefect stores one that starts every flow run in the directory the deploy ran
+# from, which `task orchestrate:deploy` makes the repo root (A18).
 name: declarative-data-platform
 
 build: null
 push: null
-
-# Flow runs start in the repo the deployments were deployed from (A18).
-pull:
-  - prefect.deployments.steps.set_working_directory:
-      directory: "{{ $PWD }}"
 
 deployments:
   - name: run

@@ -10,7 +10,7 @@ Ingest runs per source and reports 0, 1 or 2 (ADR-0018). The warehouse is one Du
 
 A scheduled run starts one ingest flow run per source, all at once, each on its own pod on the work pool (its own process on a local one). Once every one of them has finished, one build flow run builds the target. The build never fans out.
 
-Rejected: one build per source (concurrent writers to one DuckDB file); running every source in the scheduled run's own process (a source that hangs or crashes takes the others with it, and the pod per source shape is lost).
+Rejected: one flow run per resource (the most pods, each repeating its source's settings, with no isolation ADR-0018 does not already give); one build per source (concurrent writers to one DuckDB file); running every source in the scheduled run's own process (a source that hangs or crashes takes the others with it, and the pod per source shape is lost).
 
 ## Consequences
 

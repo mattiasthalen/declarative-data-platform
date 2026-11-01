@@ -36,11 +36,16 @@ tasks:
 
   ingest:source:
     desc: Land one source's resources (task -x ingest:source -- SOURCE); with -x, exits 0 all landed, 1 some, 2 none
+    # The name reaches the shell only as a variable: go-task's quoting of CLI_ARGS does not
+    # survive inside double quotes, where `$(...)` in a name would run. `--` keeps a name
+    # starting with `-` from being read as one of ingest's options.
+    env:
+      SOURCE_ARGS: "{{.CLI_ARGS}}"
     preconditions:
-      - sh: test -n "{{.CLI_ARGS}}"
+      - sh: test -n "$SOURCE_ARGS"
         msg: "name the source: task ingest:source -- SOURCE"
     cmds:
-      - uv run ingest {{.CLI_ARGS}}
+      - uv run ingest -- {{.CLI_ARGS}}
 
   build:
     desc: Build every layer into the target's DuckDB file (TARGET=dev by default)
