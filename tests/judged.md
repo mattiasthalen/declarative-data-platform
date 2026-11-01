@@ -236,3 +236,28 @@ Pass when all of these hold:
    the newest staged) then appends it.
 4. The evidence stage shows one live round trip: `task simulate`, then `task ingest`, then
    `task build`, with the real load's id larger than the simulated one and the build green.
+
+# Judged checks for story #3 (generated ERDs in the README)
+
+## AC12: the README renders on GitHub
+
+The reviewer opens the PR branch's `README.md` on github.com (the rendered file view, not
+the raw text) and records pass or fail for each line below. The diagrams are GitHub's Mermaid,
+whose version may parse less than the Mermaid 11 the type format was measured against
+(assumption on GitHub rendering the README's `erDiagram`s, in `docs/assumptions.md`).
+
+Pass when all of these hold:
+
+1. Under the section "The model" there are three rendered diagrams, conform, integrate and
+   serve, in that order. No Mermaid error box ("Unable to render rich display", a parse
+   error, or the code block shown as plain text) appears in their place.
+2. The conform diagram shows the entity `adventure_works__products` with the row
+   `bigint product_id PK`.
+3. The integrate diagram shows `PR_Product` with `PR_ID` marked PK and seven attributes,
+   including the parenthesised types (`varchar(25)`) and the "historized" comments.
+4. The serve diagram shows `product` and `_bridge` (the leading underscore intact), and one
+   relationship line between them labelled `_key__product`.
+5. None of the HTML comment markers around the diagrams is visible on the rendered page.
+
+A failure in (1)-(4) sends the type format back to the spec ([S1]), and the assumption is
+recorded as broken.

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import yaml
 
+import erd
 import integrate
 import ownership
 
@@ -101,8 +102,32 @@ def bridge(entities: list[str]) -> str:
     )
 
 
-def packages(root: Path) -> dict[Path, dict[str, str]]:
-    _, anchors = integrate.read(root)
+def diagram(anchors) -> str:
+    """Each dimension, then the bridge, many to one to each dimension by its key."""
+    entities, relationships = [], []
+    for anchor, attributes, _ in anchors:
+        entity = snake(anchor.descriptor)
+        entities.append(
+            (
+                entity,
+                [
+                    erd.row("varchar", f"_key__{entity}", "PK"),
+                    erd.row("timestamp", f"{entity}__valid_from"),
+                    erd.row("timestamp", f"{entity}__valid_to"),
+                ]
+                + [erd.row(t.data_range, f"{entity}__{snake(t.descriptor)}") for t in attributes],
+            )
+        )
+        relationships.append(f'_bridge }}o--|| {entity} : "_key__{entity}"')
+    bridge_rows = (
+        [erd.row("varchar", "stage")]
+        + [erd.row("varchar", f"_key__{name}", "FK") for name, _ in entities]
+        + [erd.row("timestamp", "_valid_from"), erd.row("timestamp", "_valid_to")]
+    )
+    return erd.diagram(entities + [("_bridge", bridge_rows)], relationships)
+
+
+def packages(anchors) -> dict[Path, dict[str, str]]:
     staging: dict[str, str] = {}
     uss: dict[str, str] = {}
     models_staging, models_uss = [], []
@@ -159,11 +184,12 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
 def generate(*, check: bool = False) -> int:
     """Write the models, or with ``check`` report drift: 0 written or clean, 1 drift, 2 invalid declarations."""
     try:
-        planned = packages(Path.cwd())
+        _, anchors = integrate.read(Path.cwd())
+        planned = packages(anchors)
     except (integrate.ModelError, KeyError) as error:
         print(f"{integrate.MODEL}: {error}")
         return 2
-    return ownership.run(GENERATOR, f"{integrate.MODEL}", planned, check=check)
+    return ownership.run(GENERATOR, f"{integrate.MODEL}", planned, erd.region(GENERATOR, diagram(anchors)), check=check)
 
 
 def main() -> int:

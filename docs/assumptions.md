@@ -27,6 +27,7 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A19 | Prefect resolves alongside dbt-core and dlt in one lock. | orchestrate | `uv lock` fails, or pins dbt-core or dlt outside their ranges in `pyproject.toml`. |
 | A20 | The committed Products snapshot is representative of the live feed: same fields, same quirks. | simulate | The live feed's measured facts change (row count, a field added or renamed, product lines no longer padded) and `src/simulate/adventure_works__products.jsonl` was not refreshed. |
 | A21 | The simulated lake's history exercises the crt rules CI cares about: every change kind lands at least once in CI's seeded run. | ci | The CI seed's run lands no row of some change kind (`tests/simulate/test_simulate.py::test_change_kinds` fails on it). |
+| A22 | GitHub's Mermaid renders the README's `erDiagram`s: parenthesised types (`varchar(25)`, any version), names with a leading underscore (`_bridge`, Mermaid 10.5 and later) and quoted comments; a comma in a type (`decimal(10,2)`) needs Mermaid 11.16 and later, and no model declares one yet. | docs | The README on GitHub shows a Mermaid error box instead of a diagram. |
 
 ## Measured (2026-10-30, the AdventureWorks OData feed)
 

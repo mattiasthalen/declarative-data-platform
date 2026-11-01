@@ -19,3 +19,7 @@ Authored and generated files are apart at a glance, which story 2's `--check` re
 ## Addendum 2026-10-31
 
 Ingest declarations live in a top-level `sources/`, and `sources/` and `contracts/` hold one folder per source with one file per resource (ADR-0017).
+
+## Addendum 2026-11-01
+
+A generator can also own a marked region of a hand-written file, such as each layer's diagram in the root README; it rewrites only the text between the region's markers ([ADR-0028](0028-let-a-generator-own-a-marked-region-of-a-hand-written-file.md)).

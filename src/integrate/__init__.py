@@ -17,6 +17,7 @@ from pathlib import Path
 
 import yaml
 
+import erd
 import ownership
 
 GENERATOR = "integrate"
@@ -595,8 +596,21 @@ def schema_file(anchors) -> str:
     return yaml.safe_dump({"version": 2, "models": models}, sort_keys=False, allow_unicode=True, width=100)
 
 
-def packages(root: Path) -> dict[Path, dict[str, str]]:
-    schema, anchors = read(root)
+def diagram(anchors: list[tuple[Anchor, list[Attribute], Attribute]]) -> str:
+    """Each anchor with its identity and its attributes; knots, ties and load tables are left out."""
+    return erd.diagram(
+        [
+            (
+                anchor.name,
+                [erd.row(anchor.identity, anchor.id, "PK")]
+                + [erd.row(t.data_range, t.name, comment="historized") for t in attributes],
+            )
+            for anchor, attributes, _ in anchors
+        ]
+    )
+
+
+def packages(schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]]) -> dict[Path, dict[str, str]]:
     files: dict[str, str] = {}
     for anchor, attributes, identifier in anchors:
         files |= anchor_files(anchor, attributes, identifier)
@@ -615,11 +629,14 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
 def generate(*, check: bool = False) -> int:
     """Write the models, or with ``check`` report drift: 0 written or clean, 1 drift, 2 invalid declarations."""
     try:
-        planned = packages(Path.cwd())
+        schema, anchors = read(Path.cwd())
+        planned = packages(schema, anchors)
     except (ModelError, KeyError) as error:
         print(f"{MODEL}: {error}")
         return 2
-    return ownership.run(GENERATOR, f"{MODEL} and {MAPPINGS}/", planned, check=check)
+    return ownership.run(
+        GENERATOR, f"{MODEL} and {MAPPINGS}/", planned, erd.region(GENERATOR, diagram(anchors)), check=check
+    )
 
 
 def main() -> int:

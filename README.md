@@ -15,13 +15,81 @@ lake (dlt, Parquet)  ->  raw  ->  conform  ->  integrate (Anchor, crt)  ->  serv
 | integrate | a concurrent-reliance-temporal Anchor model in Roenbaeck's naming, with its load log, integrity checks and schema tracking | `anchor/model.yaml`, `anchor/mappings/` | `uv run integrate generate` |
 | serve | a Puppini Unified Star Schema: staged bridges, dimensions with ghost rows, the bridge | `anchor/model.yaml` | `uv run serve generate` |
 
+## The model
+
+Each layer's logical model, drawn by its generator from the declarations; `uv run task check`
+fails when a diagram no longer matches them. Edit around the diagrams, never inside the
+markers.
+
+### Conform
+
+The staged models, one per contract, with their primary keys.
+
+<!-- erd:conform begin: written by `uv run conform generate` -->
+```mermaid
+erDiagram
+  adventure_works__products {
+    bigint product_id PK
+  }
+```
+<!-- erd:conform end -->
+
+### Integrate
+
+The anchors, with their identities and attributes in Anchor Modeling's own naming.
+
+<!-- erd:integrate begin: written by `uv run integrate generate` -->
+```mermaid
+erDiagram
+  PR_Product {
+    int PR_ID PK
+    varchar(25) PR_NUM_Product_ProductNumber "historized"
+    varchar(50) PR_NAM_Product_Name "historized"
+    varchar(2) PR_LIN_Product_ProductLine "historized"
+    varchar(15) PR_COL_Product_Color "historized"
+    date PR_SST_Product_SellStart "historized"
+    date PR_SEN_Product_SellEnd "historized"
+    date PR_DIS_Product_Discontinued "historized"
+  }
+```
+<!-- erd:integrate end -->
+
+### Serve
+
+The Unified Star Schema: each dimension, and the bridge that joins them.
+
+<!-- erd:serve begin: written by `uv run serve generate` -->
+```mermaid
+erDiagram
+  product {
+    varchar _key__product PK
+    timestamp product__valid_from
+    timestamp product__valid_to
+    varchar(25) product__product_number
+    varchar(50) product__name
+    varchar(2) product__product_line
+    varchar(15) product__color
+    date product__sell_start
+    date product__sell_end
+    date product__discontinued
+  }
+  _bridge {
+    varchar stage
+    varchar _key__product FK
+    timestamp _valid_from
+    timestamp _valid_to
+  }
+  _bridge }o--|| product : "_key__product"
+```
+<!-- erd:serve end -->
+
 ## Run it
 
 ```sh
 uv sync
 uv run task ingest                  # land every declared resource under ./lake (or $LAKE_ROOT)
 uv run task generate                # regenerate every layer's models
-uv run task check                   # fail if committed models drifted from the declarations
+uv run task check                   # fail if committed models or diagrams drifted from the declarations
 uv run task build                   # build warehouse/dev.duckdb (TARGET=prod for the other)
 uv run task simulate                # append a changed copy of the latest Products load (the feed is static)
 ```
