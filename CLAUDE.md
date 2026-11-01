@@ -11,7 +11,7 @@
 ## Where things are, and whose rules apply
 
 The repo is laid out by kind, and each layer's files sit in folders named after the layer
-(ADR-0012, ADR-0013). Each layer has its own rules in `.claude/rules/`, which load by
+(ADR-0012, ADR-0015). Each layer has its own rules in `.claude/rules/`, which load by
 themselves when you read a file of that layer:
 
 | layer | its folders | its rules |
@@ -22,7 +22,7 @@ themselves when you read a file of that layer:
 | serve | `**/serve/` | `.claude/rules/serve.md`, and `.claude/rules/uss.md` for all but the hand-written models |
 
 `**/<layer>/` means that layer's folder under `src/`, `models/`, `macros/` and `tests/`. A new
-file of a layer goes in one of its folders, or its rules will not reach the next agent (A8).
+file of a layer goes in one of its folders, or its rules will not reach the next agent (A11).
 Files outside them, such as `src/ownership/` or `macros/generate_schema_name.sql`, serve every
 layer and follow only this file.
 

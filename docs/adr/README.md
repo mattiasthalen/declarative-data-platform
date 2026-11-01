@@ -15,7 +15,7 @@ Nygard's format: Context, Decision, Consequences, with a Status. One decision pe
 | [0009](0009-stage-conform-by-appending-whole-loads.md) | Stage conform by appending every newer load whole, and let Anchor discard repeats | Accepted (2026-10-31) |
 | [0010](0010-cast-with-try-cast-and-never-let-a-failed-cast-retract.md) | Cast with try_cast, and never let a failed cast retract | Accepted (2026-10-31) |
 | [0011](0011-serve-a-uss-from-staged-bridges-unioned-by-name.md) | Serve a Unified Star Schema from incremental staged bridges unioned by name | Accepted (2026-10-31) |
-| [0012](0012-lay-the-repo-out-by-kind-with-generator-owned-folders.md) | Lay the repo out by kind, and let a generator own only folders that carry its README | Accepted (2026-10-31); partly superseded by ADR-0013 |
+| [0012](0012-lay-the-repo-out-by-kind-with-generator-owned-folders.md) | Lay the repo out by kind, and let a generator own only folders that carry its README | Accepted (2026-10-31); partly superseded by ADR-0015 |
 | [0013](0013-check-generated-output-byte-for-byte-through-the-writer-that-owns-it.md) | Check generated output byte for byte through the writer that owns it | Accepted (2026-10-31) |
 | [0014](0014-require-ci-check-and-test-jobs-to-pass-before-merging-into-main.md) | Require CI's check and test jobs to pass before anything merges into main | Accepted (2026-10-31) |
-| [0013](0013-keep-each-layers-files-in-layer-named-folders-and-scope-agent-rules-to-them.md) | Keep each layer's files in folders named after the layer, and scope agent rules to them | Accepted (2026-10-31) |
+| [0015](0015-keep-each-layers-files-in-layer-named-folders-and-scope-agent-rules-to-them.md) | Keep each layer's files in folders named after the layer, and scope agent rules to them | Accepted (2026-10-31) |

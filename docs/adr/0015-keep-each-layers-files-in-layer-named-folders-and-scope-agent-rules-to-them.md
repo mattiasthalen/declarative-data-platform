@@ -1,4 +1,4 @@
-# ADR-0013 — Keep each layer's files in folders named after the layer, and scope agent rules to them
+# ADR-0015 — Keep each layer's files in folders named after the layer, and scope agent rules to them
 
 **Status:** Accepted (2026-10-31) · **Supersedes:** the where-macros-live decision in [ADR-0012](0012-lay-the-repo-out-by-kind-with-generator-owned-folders.md)
 
@@ -31,6 +31,6 @@ places every tracked file, which is upkeep that layer-named folders make unneces
 ## Consequences
 
 A new file of a layer gets that layer's rules by being put where it belongs; a file put elsewhere
-silently gets none (A8). Rules are tied to Claude Code's rules mechanism (A7), proved by a local
+silently gets none (A11). Rules are tied to Claude Code's rules mechanism (A10), proved by a local
 test (`task test-rules`) that runs real Claude sessions and never runs in CI. Other agents do not
 read `.claude/rules/`.
