@@ -51,3 +51,22 @@ tasks:
     desc: Prove each layer's agent rules load, in real Claude Code sessions (local only)
     cmds:
       - uv run pytest -m claude
+
+  orchestrate:server:
+    desc: Start a local Prefect server, standing in for the infra's (http://127.0.0.1:4200)
+    cmds:
+      - uv run prefect server start
+
+  orchestrate:worker:
+    desc: Start a process worker on the work pool $ORCHESTRATE_WORK_POOL names, from the repo root
+    preconditions: &pool
+      - sh: test -n "$ORCHESTRATE_WORK_POOL"
+        msg: "name the work pool: export ORCHESTRATE_WORK_POOL=<pool>"
+    cmds:
+      - uv run prefect worker start --pool "$ORCHESTRATE_WORK_POOL" --type process
+
+  orchestrate:deploy:
+    desc: Deploy orchestrate/prefect.yaml (the hourly run, ingest-source, build) to $PREFECT_API_URL
+    preconditions: *pool
+    cmds:
+      - uv run prefect --no-prompt deploy --all --prefect-file orchestrate/prefect.yaml
