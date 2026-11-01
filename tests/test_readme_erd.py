@@ -9,7 +9,9 @@ before every test.
 
 from __future__ import annotations
 
+import os
 import re
+import signal
 import subprocess
 from itertools import pairwise
 
@@ -311,3 +313,74 @@ def test_erd_broken(ws, case, layer):
 
     for other in untouched:
         erd.ok(erd.generate(ws, other))
+
+
+# --------------------------------------------------------------------------- review round 1: R1-R3
+
+
+@pytest.mark.parametrize("layer", LAYERS)
+def test_erd_broken_not_utf8(ws, layer):
+    """R1: a README that is not valid UTF-8: generate and --check exit 2, not 1 as for drift, with no
+    traceback and a `README.md: ... not UTF-8` line on stderr, and write nothing."""
+    path = ws.root / README
+    path.write_bytes(path.read_bytes() + b"\xff\xfe junk\n")
+    before = ws.tree()
+    problem = re.compile(r"README\.md:.*not UTF-8")
+    for step in (erd.generate(ws, layer), erd.check(ws, layer)):
+        assert step.returncode == 2, step.shown()
+        assert "Traceback" not in step.output, step.shown()
+        assert any(problem.search(line) for line in step.stderr.splitlines()), (
+            f"no stderr line matching {problem.pattern!r}:\n{step.shown()}"
+        )
+        assert ws.tree() == before, f"{' '.join(step.args)} wrote to the tree"
+
+
+UNCLOSED_SECONDS = 20
+
+
+def test_erd_unclosed_comment_is_fast(ws):
+    """R2: an unclosed HTML comment of ~46 KB of marker-like text after the real regions is not a
+    marker: every layer's --check finishes within 20 seconds, exits 0 and reports no drift."""
+    path = ws.root / README
+    path.write_text(path.read_text(encoding="utf-8") + "<!-- erd:conform begin " * 2000, encoding="utf-8")
+    for layer in LAYERS:
+        args = ("uv", "run", layer, "generate", "--check")
+        # uv starts the generator as a child: on a timeout, kill the whole group, not uv alone.
+        proc = subprocess.Popen(
+            args, cwd=ws.root, env=ws.env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            start_new_session=True,
+        )
+        try:
+            stdout, stderr = proc.communicate(timeout=UNCLOSED_SECONDS)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+            pytest.fail(f"{layer} generate --check took more than {UNCLOSED_SECONDS}s on an unclosed comment")
+        step = erd.Run(args, proc.returncode, stdout, stderr)
+        erd.ok(step)
+        assert not erd.statuses(step), f"{layer} reported drift for an unclosed comment:\n{step.shown()}"
+
+
+def test_erd_broken_symlink(ws, tmp_path):
+    """R3: README.md a symbolic link to a file outside the workspace: generate exits 2 with a
+    `README.md: ... symbolic link` line on stderr and leaves the file outside byte-identical, though
+    the declarations changed so the region would change."""
+    path = ws.root / README
+    outside = tmp_path / README
+    outside.write_bytes(path.read_bytes())
+    pristine = outside.read_bytes()
+    path.unlink()
+    path.symlink_to(outside)
+    erd.add_weight_attribute(ws)
+    problem = re.compile(r"README\.md:.*symbolic link")
+    try:
+        step = erd.generate(ws, "integrate")
+        assert outside.read_bytes() == pristine, f"generate rewrote the file outside the repo:\n{step.shown()}"
+        assert step.returncode == 2, step.shown()
+        assert "Traceback" not in step.output, step.shown()
+        assert any(problem.search(line) for line in step.stderr.splitlines()), (
+            f"no stderr line matching {problem.pattern!r}:\n{step.shown()}"
+        )
+    finally:
+        if path.is_symlink():
+            path.unlink()
