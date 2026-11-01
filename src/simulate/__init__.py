@@ -131,13 +131,14 @@ class Simulation:
     def next_load(self, index: int, day: date, final: bool) -> list[dict]:
         """The next load's rows: the previous load, back-from-drop products restored, changed.
 
-        The run's ``final`` load drops no product, since no later load would bring it back; its
-        drop outs are edits instead.
+        A product drops out for one load only: the run's ``final`` load drops none, since no later
+        load would bring it back, and a product just back is not dropped again. Those drop outs
+        are edits instead.
         """
         rng = random.Random(f"{self.seed}:{index}")
         rows = {row[KEY]: dict(row) for row in self.rows}
         rows.update({number: dict(row) for number, row in self.held_back.items()})
-        self.held_back = {}
+        returning, self.held_back = set(self.held_back), {}
         candidates = sorted(rows)
         count = max(len(MIX), round(len(self.rows) * SHARE))
         kinds = self.kinds(rng, count)
@@ -153,8 +154,10 @@ class Simulation:
             number = next(targets, None)
             if number is None:
                 break
-            if kind == "drop out":
+            if kind == "drop out" and number not in returning:
                 self.held_back[number] = rows.pop(number)
+            elif kind == "drop out":
+                self.edit_fallback(rng, rows[number], day)
             elif not self.change(rng, rows[number], kind, day):
                 self.edit_fallback(rng, rows[number], day)
         out = [rows[number] for number in sorted(rows, key=lambda n: self.order(n, rows))]
@@ -181,7 +184,7 @@ class Simulation:
         if attribute == "Name":
             return f"{current or row[KEY]} {rng.choice(('II', 'Pro', 'Lite', 'Plus', 'Sport'))}"
         if attribute in DATES:
-            # Kept in order: a sell start moves earlier, an end moves to a day after the sell start.
+            # Kept in order: a sell start moves earlier, an end lands 1 to 1501 days after the sell start.
             start = parse_date(row.get("SellStartDate")) or date(2013, 1, 1)
             if attribute == "SellStartDate":
                 return (start - timedelta(days=rng.randint(1, 365))).isoformat()
@@ -298,7 +301,7 @@ def run(seed: int, loads: int, lake: Path) -> list[Path]:
     for index in range(1, loads + 1):
         if stamp_now:
             # Now, as a real ingest stamps a load; one second after the latest if the clock is behind (A3).
-            now = Decimal(repr(time.time()))
+            now = Decimal(format_id(Decimal(repr(time.time()))))  # compared as it will be written
             stamp = now if now > stamp else stamp + 1
         else:
             stamp = stamp + DAY
