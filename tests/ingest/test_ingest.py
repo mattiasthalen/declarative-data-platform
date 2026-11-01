@@ -660,6 +660,41 @@ def test_absolute_endpoint_path_to_another_host_is_refused(feed, other_feed, wor
     _assert_refused_without_asking(code, feed, other_feed, lake, stderr(capsys))
 
 
+API_KEY = "SECRET-KEY-9"
+LOCATION_SECRET = "SECRET-LOC-3"
+
+
+def _keyed_products(work: Path, feed: Feed) -> None:
+    """``products``, its client sending an api key in the query string of every request."""
+    config = source_config(f"{feed.base}/")
+    config["rest_api"]["client"]["auth"] = {"type": "api_key", "location": "query", "name": "key", "api_key": API_KEY}
+    declare(work, "adventure_works", None, {"products": entry("Products")}, config=config)
+
+
+@pytest.mark.parametrize("hop", ["next_link", "redirect"])
+def test_origin_refusal_does_not_print_the_request(feed, other_feed, work, lake, capfd, hop):
+    """AC6, X3: a hop to another host, refused, fails the resource without printing the request: not
+    the api key the client put in its query string, nor a value the redirect's Location carried."""
+    _foreign_page(other_feed)
+    foreign = f"http://localhost:{other_feed.server.server_port}/Products?page=2&sig={LOCATION_SECRET}"
+    home = [product(1, "SK-0001", "Home")]
+    if hop == "next_link":
+        feed.routes["/Products"] = lambda query: (200, {"value": home, "@odata.nextLink": foreign})
+    else:
+        feed.routes["/Products"] = lambda query: (302, {}, {"Location": foreign})
+    _keyed_products(work, feed)
+
+    code = ingest()
+
+    out = capfd.readouterr()
+    _assert_refused_without_asking(code, feed, other_feed, lake, out.err)
+    assert feed.requested and all(parse_qs(urlsplit(p).query).get("key") == [API_KEY] for p in feed.requested), (
+        f"the declared api key was not sent: {feed.requested}"
+    )
+    for secret in (API_KEY, LOCATION_SECRET):
+        assert secret not in out.out and secret not in out.err, out.err
+
+
 # --------------------------------------------------------------------------- AC7, AC14, EC3, EC6: declarations checked
 
 
@@ -823,6 +858,42 @@ def test_refusal_does_not_echo_declared_values(feed, work, lake, capsys):
     assert SECRET not in out.out and SECRET not in out.err, out.err
     assert set(landed(lake)) == {"good__items"}
     assert all(urlsplit(p).path != "/Other" for p in feed.requested)
+
+
+def _scalar_auth(work: Path, base: str) -> None:
+    config = source_config(base)
+    config["rest_api"]["client"]["auth"] = "SECRET-TOKEN-6"
+    declare(work, "bad", None, {"fine": entry("Fine"), "other": entry("Other")}, config=config)
+
+
+def _numeric_header(work: Path, base: str) -> None:
+    declare(work, "bad", base, {"fine": entry("Fine"), "other": entry("Other", headers={"Authorization": 999111222})})
+
+
+# (case, how to declare the bad source, the file named on stderr, the value that must not be printed)
+REJECTED_SCALARS = {
+    "client_auth_string": (_scalar_auth, "_source.yaml", "SECRET-TOKEN-6"),
+    "header_value_number": (_numeric_header, "other.yaml", "999111222"),
+}
+
+
+@pytest.mark.parametrize("case", list(REJECTED_SCALARS))
+def test_rejected_scalar_value_is_not_printed(feed, work, lake, capfd, case):
+    """AC14, X3: a declared scalar dlt rejects (an auth given as a bare string, a header value that is
+    a number) fails its source naming the file, without printing the value; a valid source still
+    lands (exit 1)."""
+    _good_source(work, feed)
+    _served(feed, "Fine", "Other")
+    make, named, value = REJECTED_SCALARS[case]
+    make(work, f"{feed.base}/")
+
+    code = ingest()
+
+    out = capfd.readouterr()
+    assert code == 1, out.err
+    assert named in out.err, out.err
+    assert value not in out.out and value not in out.err, out.err
+    assert set(landed(lake)) == {"good__items"}
 
 
 @pytest.mark.parametrize("folder", ["_template", "__pycache__"])
@@ -1059,6 +1130,50 @@ def test_incremental_no_new_rows_lands_nothing(feed, work, lake):
     assert set(landed(lake).get(RESOURCE, [])) == set(first)
     for path, data in first.items():
         assert path.read_bytes() == data
+
+
+def test_interrupted_load_is_not_landed_twice(feed, work, lake, monkeypatch, capsys):
+    """A load interrupted after its files are written leaves its package pending in the dlt data
+    folder; the next run finishes that load, exit 0, and every row is in the lake exactly once."""
+    from dlt.load.load import Load
+
+    served = [product(i, f"IL-{i:04d}", f"Row {i}") for i in (1, 2, 3)]
+    feed.pages["/Products"] = (200, {"value": served})
+    _products(work, f"{feed.base}/")
+
+    complete_package = Load.complete_package
+    interrupted = []
+
+    def interrupt_once(self, load_id, schema, aborted=False):
+        if not aborted and not interrupted:
+            interrupted.append(load_id)
+            raise RuntimeError("interrupted after writing the load's files")
+        return complete_package(self, load_id, schema, aborted)
+
+    monkeypatch.setattr(Load, "complete_package", interrupt_once)
+    assert ingest() != 0, stderr(capsys)
+    assert interrupted, "the load never reached completion: nothing was interrupted"
+    written = landed(lake).get("adventure_works__products", [])
+    assert written, "the interrupted load wrote no files to the lake: the case is not the one pinned"
+
+    code = ingest()
+
+    assert code == 0, stderr(capsys)
+    files = landed(lake)
+    assert set(files) == {"adventure_works__products"}
+    con = duckdb.connect()
+    try:
+        numbers = sorted(
+            n
+            for (n,) in con.execute(
+                "select json_extract_string(cast(data as varchar), '$.ProductNumber')"
+                " from read_parquet(?, hive_partitioning = false)",
+                [[p.as_posix() for p in files["adventure_works__products"]]],
+            ).fetchall()
+        )
+    finally:
+        con.close()
+    assert numbers == ["IL-0001", "IL-0002", "IL-0003"], f"rows landed {numbers}"
 
 
 # --------------------------------------------------------------------------- AC16: the tasks
