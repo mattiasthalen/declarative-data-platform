@@ -20,6 +20,8 @@ The words someone needs defined to talk about using or developing the platform. 
 
 **correction** — Another value for a *changed-at* already held; it retracts the held value and asserts the new one. Distinct from a *restatement*. See [ADR-0006](adr/0006-apply-anchor-crt-loading-rules-in-generated-sql.md).
 
+**late arrival** — A value whose *changed-at* is earlier than the latest *changed-at* already held for that attribute. It slots into history and does not replace the current value. Distinct from a *correction*, which states another value at a *changed-at* already held.
+
 **retraction** — An assertion at reliability 0 that withdraws a held value. Only a null in the source, or a *correction*, retracts; absence from a *load* and a failed cast do not.
 
 **staged bridge** — One entity's bridge in the USS staging area, holding its own keys and those inherited one step away. Distinct from *the bridge*, the union of all staged bridges.
