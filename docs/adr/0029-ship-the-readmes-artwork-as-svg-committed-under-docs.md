@@ -1,6 +1,6 @@
 # ADR-0029 — Ship the README's artwork as SVG committed under docs/
 
-**Status:** Proposed (2026-11-01)
+**Status:** Accepted (2026-11-01)
 
 ## Context
 
