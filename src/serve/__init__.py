@@ -156,17 +156,19 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
     return {STAGING: staging, USS: uss}
 
 
-def generate() -> int:
+def generate(*, check: bool = False) -> int:
+    """Write the models, or with ``check`` report drift: 0 written or clean, 1 drift, 2 invalid declarations."""
     try:
         planned = packages(Path.cwd())
     except (integrate.ModelError, KeyError) as error:
         print(f"{integrate.MODEL}: {error}")
-        return 1
-    return ownership.run(GENERATOR, f"{integrate.MODEL}", planned)
+        return 2
+    return ownership.run(GENERATOR, f"{integrate.MODEL}", planned, check=check)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog=GENERATOR, description=__doc__.splitlines()[0])
     parser.add_argument("command", choices=["generate"])
-    parser.parse_args()
-    return generate()
+    parser.add_argument("--check", action="store_true", help="write nothing; report drift and exit 1 if any")
+    args = parser.parse_args()
+    return generate(check=args.check)

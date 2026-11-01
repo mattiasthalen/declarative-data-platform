@@ -8,6 +8,22 @@ tasks:
       - uv run integrate generate
       - uv run serve generate
 
+  check:
+    desc: Fail if any layer's committed models differ from what its declarations produce
+    silent: true
+    cmds:
+      - |
+        failed=0
+        for layer in conform integrate serve; do
+          if uv run "$layer" generate --check; then
+            echo "$layer: pass"
+          else
+            echo "$layer: fail"
+            failed=1
+          fi
+        done
+        exit $failed
+
   ingest:
     desc: Land every declared resource in the lake, one dlt pipeline each
     cmds:

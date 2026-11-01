@@ -29,7 +29,7 @@
 
 - **Generated output is committed.** After changing a contract, the model, a mapping or a
   generator, run `uv run task generate` and commit the result with the change;
-  `tests/test_generate_is_committed.py` fails otherwise.
+  `uv run task check` fails otherwise, naming the file, and CI requires it (ADR-0014).
 - **Names.** Conform columns are snake_case, `__` separates concerns, platform columns are
   `_dlt__…` (ADR-0002). Integrate keeps Roenbaeck's default naming verbatim (ADR-0003).
 - **No static attributes.** Every attribute in `model.yaml` has a `timeRange`.
@@ -39,6 +39,7 @@
 ## Proving a change
 
 ```sh
+uv run task check   # drift: committed models that differ from the declarations
 uv run pytest
 ```
 

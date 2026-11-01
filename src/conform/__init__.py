@@ -64,7 +64,10 @@ def texts(node) -> list[str]:
 
 
 def load(path: Path) -> dict:
-    contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, UnicodeDecodeError) as error:
+        raise ContractError(f"{path} is not readable YAML: {error}") from error
     if not isinstance(contract, dict) or contract.get("kind") != "DataContract":
         raise ContractError(f"{path} is not an ODCS data contract")
     for text in texts(contract):
@@ -222,17 +225,19 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
     return out
 
 
-def generate() -> int:
+def generate(*, check: bool = False) -> int:
+    """Write the models, or with ``check`` report drift: 0 written or clean, 1 drift, 2 invalid declarations."""
     try:
         planned = packages(Path.cwd())
     except ContractError as error:
         print(error)
-        return 1
-    return ownership.run(GENERATOR, "the data contracts in contracts/", planned)
+        return 2
+    return ownership.run(GENERATOR, "the data contracts in contracts/", planned, check=check)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog=GENERATOR, description=__doc__.splitlines()[0])
     parser.add_argument("command", choices=["generate"])
-    parser.parse_args()
-    return generate()
+    parser.add_argument("--check", action="store_true", help="write nothing; report drift and exit 1 if any")
+    args = parser.parse_args()
+    return generate(check=args.check)
