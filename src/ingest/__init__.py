@@ -22,13 +22,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
 
 import yaml
 
 SOURCES = Path("sources")
 SOURCE_FILE = "_source.yaml"
-NAME = re.compile(r"[a-z][a-z0-9_]*")
+# snake_case without a double underscore, which separates the source from the resource in names
+# built from both (ADR-0002, ADR-0014).
+NAME = re.compile(r"[a-z][a-z0-9]*(_[a-z0-9]+)*")
 
 # dlt writes under <bucket>/<dataset>/<layout>. Its own bookkeeping lands in the dataset folder,
 # $LAKE_ROOT/_dlt/; the layout steps out of it so each resource sits directly under $LAKE_ROOT.
@@ -77,7 +78,7 @@ def read_sources(root: Path = SOURCES) -> list[Source]:
 
 def read_source(folder: Path, source: Source) -> None:
     if not NAME.fullmatch(source.name):
-        raise Refused(f"{folder}: a source's name must be snake_case")
+        raise Refused(f"{folder}: a source's name must be snake_case, with no double underscore")
     files = sorted(folder.glob("*.yaml"))
     resource_files = [p for p in files if p.name != SOURCE_FILE]
     if not (folder / SOURCE_FILE).is_file():
@@ -98,17 +99,19 @@ def read_source(folder: Path, source: Source) -> None:
     for path in resource_files:
         name = path.stem
         if not NAME.fullmatch(name):
-            raise Refused(f"{path}: a resource's file name must be snake_case")
+            raise Refused(f"{path}: a resource's file name must be snake_case, with no double underscore")
         entry = load_yaml(path)
         if not isinstance(entry, dict):
             raise Refused(f"{path} must hold a mapping")
         if entry.get("name", name) != name:
             raise Refused(f"{path}: name {entry['name']!r} differs from the file name {name!r}")
-        disposition = entry.get("write_disposition", "append")
+        defaults = source.config.get("resource_defaults") or {}
+        disposition = {**defaults, **entry}.get("write_disposition", "append")
         if isinstance(disposition, dict):
             disposition = disposition.get("disposition")
         if disposition != "append":
-            raise Refused(f"{path}: write_disposition {disposition!r} refused; every load is appended")
+            where = path if "write_disposition" in entry else folder / SOURCE_FILE
+            raise Refused(f"{where}: write_disposition {disposition!r} refused; every load is appended")
         entry = {**entry, "name": name}
         KINDS[source.kind].check_resource(path, source.config, entry)
         source.resources[name] = entry
@@ -140,39 +143,31 @@ def origin(url: str) -> tuple[str, str, int | None]:
 
 
 def odata_paginator():
-    """The ``odata`` paginator: follows ``@odata.nextLink``, resolved against the page it came from,
-    only to the origin of the resource's first request."""
+    """The ``odata`` paginator: follows ``@odata.nextLink``, resolved against the page it came from.
+    Where it may lead is the session's to refuse, not the paginator's."""
     from dlt.sources.helpers.rest_client.paginators import JSONLinkPaginator
 
     class ODataPaginator(JSONLinkPaginator):
         def __init__(self) -> None:
             super().__init__(next_url_path="['@odata.nextLink']")
-            self.home: tuple | None = None
-
-        def init_request(self, request) -> None:
-            super().init_request(request)
-            self.home = origin(request.url)
-
-        def update_request(self, request) -> None:
-            # dlt calls this after every page, the last one too, when there is no next link.
-            if self._next_reference is not None:
-                self._next_reference = urljoin(request.url, self._next_reference)
-                if origin(self._next_reference) != self.home:
-                    raise ValueError(f"next link {self._next_reference} leaves the feed's origin {self.home}")
-            super().update_request(request)
 
     return ODataPaginator
 
 
-def session_refusing_redirects():
-    """dlt's retrying session, made to answer a redirect with an error instead of following it: the
-    feed names where a request goes, and must not be able to send it elsewhere."""
+def guarded_session(base_url: str):
+    """dlt's retrying session, made to send nothing beyond ``base_url``'s origin and to answer a
+    redirect with an error instead of following it: the feed names where the next request goes
+    (a next link, a Location), and must not be able to send it elsewhere. Every request a resource
+    makes passes through here, whatever paginator or path its declaration names."""
     from dlt.sources.helpers.requests.retry import Client
 
+    home = origin(base_url)
     session = Client(raise_for_status=False).session
     retrying_send = session.send
 
     def send(request, **kwargs):
+        if origin(request.url) != home:
+            raise ValueError(f"{request.url} leaves the feed's origin {home}")
         kwargs["allow_redirects"] = False
         response = retrying_send(request, **kwargs)
         if response.is_redirect:
@@ -203,7 +198,10 @@ class RestApi:
         from dlt.sources.rest_api import rest_api_resources
 
         cls.register()
-        client = {**config.get("client", {}), "session": session_refusing_redirects()}
+        client = config.get("client") or {}
+        if not isinstance(client, dict) or not isinstance(client.get("base_url"), str):
+            raise ValueError("client.base_url is required")
+        client = {**client, "session": guarded_session(client["base_url"])}
         [resource] = rest_api_resources({**config, "client": client, "resources": [entry]})
         return resource
 
