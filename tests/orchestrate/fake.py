@@ -10,7 +10,8 @@ directory, and when it started and ended.
     fake.py build  <spec.json> <log> TARGET=...      sleep spec["sleep"], exit spec["exit"]
     fake.py lake   <log> SOURCE                      land the synthetic Products lake under $LAKE_ROOT
 
-A behaviour is an exit status, or ``{"sleep": seconds, "exit": status}``.
+A behaviour is an exit status, or ``{"sleep": seconds, "exit": status, "pidfile": path}``; with
+``pidfile``, the fake writes its pid there before it sleeps.
 """
 
 from __future__ import annotations
@@ -41,6 +42,8 @@ def log(path: str, argument: str, started: float) -> None:
 def behave(behaviour) -> int:
     if isinstance(behaviour, int):
         return behaviour
+    if "pidfile" in behaviour:
+        Path(behaviour["pidfile"]).write_text(str(os.getpid()))
     time.sleep(behaviour.get("sleep", 0))
     return behaviour.get("exit", 0)
 

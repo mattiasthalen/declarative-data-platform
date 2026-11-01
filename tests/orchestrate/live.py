@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import json
-import re
 import socket
 import sys
 import time
-import tomllib
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -40,12 +38,6 @@ def free_port() -> int:
 
 def when(timestamp: str | None) -> float | None:
     return None if timestamp is None else datetime.fromisoformat(timestamp).timestamp()
-
-
-def declares_prefect(root: Path) -> bool:
-    """Whether the repo's own ``orchestrate`` dependency group brings Prefect (build step 2)."""
-    groups = tomllib.loads((root / "pyproject.toml").read_text()).get("dependency-groups", {})
-    return any(re.match(r"prefect\b", str(dep)) for dep in groups.get("orchestrate", []))
 
 
 @dataclass
@@ -114,31 +106,27 @@ class Prefect:
         state = self.flow_run(run_id)["state"] or {}
         return state.get("type", ""), state.get("name", ""), state.get("message") or ""
 
-    def wait(self, run_id: str, seconds: float = RUN_SECONDS) -> dict:
-        """The run once it reaches a terminal state; fails the test after ``seconds``."""
+    def wait(self, run_id: str, seconds: float = RUN_SECONDS, until: str | None = None) -> dict:
+        """The run once it reaches state type ``until``, or any terminal state when ``until`` is None.
+
+        Fails the test after ``seconds``, or when the run ends without reaching ``until``.
+        """
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
             run = self.flow_run(run_id)
-            if run["state"] and run["state"]["type"] in TERMINAL:
+            kind = (run["state"] or {}).get("type")
+            if kind == until or (until is None and kind in TERMINAL):
                 return run
-            time.sleep(1)
+            if kind in TERMINAL:
+                pytest.fail(f"flow run {run['name']} ended {run['state']} before reaching {until}")
+            time.sleep(0.5)
         run = self.flow_run(run_id)
         pytest.fail(
-            f"flow run {run['name']} still {run['state']} after {seconds}s.\n"
+            f"flow run {run['name']} still {run['state']} after {seconds}s, "
+            f"waiting for {until or 'a terminal state'}.\n"
             f"Worker log:\n{self.worker_log()}",
             pytrace=False,
         )
-
-    def wait_for(self, run_id: str, state_type: str, seconds: float = RUN_SECONDS) -> dict:
-        deadline = time.monotonic() + seconds
-        while time.monotonic() < deadline:
-            run = self.flow_run(run_id)
-            if run["state"] and run["state"]["type"] == state_type:
-                return run
-            if run["state"] and run["state"]["type"] in TERMINAL:
-                pytest.fail(f"flow run {run['name']} ended {run['state']} before reaching {state_type}")
-            time.sleep(0.5)
-        pytest.fail(f"flow run {run_id} did not reach {state_type} within {seconds}s")
 
     def runs(self, flow_runs: dict) -> list[dict]:
         return self.call("POST", "/flow_runs/filter", {"flow_runs": flow_runs, "limit": 200})
@@ -195,8 +183,13 @@ class Fakes:
     def lake_command(self, log: str = "ingest") -> list[str]:
         return self._fake("lake", str(self.dir / f"{log}.log"))
 
-    def build_command(self, exit: int = 0, sleep: float = 0, log: str = "build") -> list[str]:
-        spec = self._spec(f"{log}-spec", {"exit": exit, "sleep": sleep})
+    def build_command(
+        self, exit: int = 0, sleep: float = 0, log: str = "build", pidfile: Path | None = None
+    ) -> list[str]:
+        behaviour: dict[str, object] = {"exit": exit, "sleep": sleep}
+        if pidfile is not None:
+            behaviour["pidfile"] = str(pidfile)
+        spec = self._spec(f"{log}-spec", behaviour)
         return self._fake("build", spec, str(self.dir / f"{log}.log"))
 
     def calls(self, log: str) -> list[dict]:

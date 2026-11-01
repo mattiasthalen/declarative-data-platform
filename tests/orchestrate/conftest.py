@@ -8,7 +8,8 @@ The infra the spec leaves outside the repo is brought up here, the way an enviro
   is shortened so a queued ``build`` is retried within seconds;
 - a process work pool, named through ``ORCHESTRATE_WORK_POOL``, and a worker on it started
   from the root of a throwaway copy of the repo (``harness.Workspace``);
-- ``prefect deploy --all --prefect-file orchestrate/prefect.yaml`` from that root.
+- ``prefect deploy --all --prefect-file orchestrate/prefect.yaml`` from that root, with the
+  deploying shell's ``PWD`` pointing elsewhere (R3).
 
 Tests trigger deployments through the REST API with each command parameter pointed at
 ``fake.py``, and read back what an operator would: flow runs, their parents, states, state
@@ -36,7 +37,6 @@ from .live import (
     WORKER_UP_SECONDS,
     Fakes,
     Prefect,
-    declares_prefect,
     free_port,
 )
 
@@ -96,13 +96,10 @@ def prefect(make_workspace, tmp_path_factory):
         PREFECT_API_URL=api,
         PREFECT_HOME=str(home / "client-home"),
         ORCHESTRATE_WORK_POOL=POOL,
-        # As a shell started in the repo root would have it; a deploy may template it.
-        PWD=str(ws.root),
         PREFECT_WORKER_QUERY_SECONDS="1",
         PREFECT_SERVER_ANALYTICS_ENABLED="false",
         DO_NOT_TRACK="1",
     )
-    uv_run = ["uv", "run"] if declares_prefect(ws.root) else ["uv", "run", "--with", PREFECT]
     p = Prefect(api=api, ws=ws, env=env, logs=logs)
     worker = None
     try:
@@ -128,7 +125,7 @@ def prefect(make_workspace, tmp_path_factory):
         if pool.returncode != 0:
             raise RuntimeError(f"could not create the work pool:\n{tail(pool.stdout + pool.stderr)}")
         worker = start(
-            [*uv_run, "prefect", "worker", "start", "--pool", POOL, "--type", "process"],
+            ["uv", "run", "prefect", "worker", "start", "--pool", POOL, "--type", "process"],
             cwd=ws.root, env=env, log=logs / "worker.log",
         )
         deadline = time.monotonic() + WORKER_UP_SECONDS
@@ -140,29 +137,29 @@ def prefect(make_workspace, tmp_path_factory):
                 raise RuntimeError(f"the process worker did not come online:\n{p.worker_log()}")
             time.sleep(1)
 
-        declaration = ws.root / "orchestrate" / "prefect.yaml"
-        if not declaration.exists():
-            p.problem = "orchestrate/prefect.yaml does not exist in the repo: nothing to deploy"
-        else:
-            deploy = subprocess.run(
-                [*uv_run, "prefect", "--no-prompt", "deploy", "--all",
-                 "--prefect-file", "orchestrate/prefect.yaml"],
-                cwd=ws.root, env=env, capture_output=True, text=True, timeout=DEPLOY_SECONDS,
+        # R3: the deploying shell's PWD is stale, as go-task leaves it when a task runs from a
+        # directory other than the one `task` was called in. Flow runs must still start in the
+        # directory the deploy really ran from, which test_fan_out asserts for every fake.
+        deploy = subprocess.run(
+            ["uv", "run", "prefect", "--no-prompt", "deploy", "--all",
+             "--prefect-file", "orchestrate/prefect.yaml"],
+            cwd=ws.root, env={**env, "PWD": str(ws.root / "models")},
+            capture_output=True, text=True, timeout=DEPLOY_SECONDS,
+        )
+        if deploy.returncode != 0:
+            p.problem = (
+                f"`prefect deploy --all --prefect-file orchestrate/prefect.yaml` exited "
+                f"{deploy.returncode}:\n{tail(deploy.stdout + deploy.stderr)}"
             )
-            if deploy.returncode != 0:
-                p.problem = (
-                    f"`prefect deploy --all --prefect-file orchestrate/prefect.yaml` exited "
-                    f"{deploy.returncode}:\n{tail(deploy.stdout + deploy.stderr)}"
-                )
-            else:
-                missing = []
-                for name in ("run", "ingest-source", "build"):
-                    try:
-                        p.call("GET", f"/deployments/name/{name}/{name}")
-                    except AssertionError as e:
-                        missing.append(f"{name}/{name}: {e}")
-                if missing:
-                    p.problem = "deployed, but not every deployment is on the server:\n" + "\n".join(missing)
+        else:
+            missing = []
+            for name in ("run", "ingest-source", "build"):
+                try:
+                    p.call("GET", f"/deployments/name/{name}/{name}")
+                except AssertionError as e:
+                    missing.append(f"{name}/{name}: {e}")
+            if missing:
+                p.problem = "deployed, but not every deployment is on the server:\n" + "\n".join(missing)
         if not p.problem:
             # No run may start that a test did not trigger.
             p.cancel_unfinished()

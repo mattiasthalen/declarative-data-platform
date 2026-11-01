@@ -46,7 +46,11 @@ def sources_of(runs: list[dict]) -> list[str]:
 
 
 def test_fan_out(orchestrated, fakes):
-    """AC2: one `ingest-source` flow run per listed source, then `build` after both ended."""
+    """AC2: one `ingest-source` flow run per listed source, then `build` after both ended.
+
+    R3: the fakes run in the deployed repo's root even though the fixture deploys with the
+    shell's PWD pointing at the copy's `models/`.
+    """
     run = trigger_run(
         orchestrated, fakes, [ALPHA, BRAVO], ingest={ALPHA: {"sleep": 3, "exit": 0}, BRAVO: 0}
     )
@@ -128,7 +132,7 @@ def test_build_failed(orchestrated, fakes):
 def test_overlap(orchestrated, fakes):
     """AC8: a second `run` while the first runs ends Cancelled, starting nothing; the first completes."""
     first = trigger_run(orchestrated, fakes, [ALPHA], ingest={ALPHA: {"sleep": 15, "exit": 0}})
-    orchestrated.wait_for(first, "RUNNING")
+    orchestrated.wait(first, until="RUNNING")
     second_fakes = Fakes(fakes.dir / "second")
     second_fakes.dir.mkdir()
     second = trigger_run(orchestrated, second_fakes, [BRAVO], ingest={BRAVO: 0})

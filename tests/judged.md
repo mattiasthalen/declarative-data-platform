@@ -153,7 +153,7 @@ Pass when all of these hold:
 5. The `build` flow run's log, `task build`'s output, shows `PASS` for every node it
    ran, a final `ERROR=0`, and no `ERROR` line anywhere.
 6. The ingest that ran was the real one: the `ingest-source` runs used the default
-   command (`uv run task ingest:source -- <source>`), not a fake or an override.
+   command (`uv run task -x ingest:source -- <source>`), not a fake or an override.
 
 ## AC18: the README says how to run the schedule
 
