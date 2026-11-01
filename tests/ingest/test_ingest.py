@@ -695,6 +695,29 @@ def test_origin_refusal_does_not_print_the_request(feed, other_feed, work, lake,
         assert secret not in out.out and secret not in out.err, out.err
 
 
+def test_failed_request_does_not_print_its_query(feed, work, lake, capfd):
+    """AC6, X3: a resource whose first request the feed refuses (404) fails, named on stderr, without
+    printing the api key the client put in that request's query string, under a name dlt's own
+    redaction does not know (``subscription-key``, as Azure API Management spells it)."""
+    feed.routes["/Products"] = lambda query: (404, {"error": "no such page"})
+    config = source_config(f"{feed.base}/")
+    config["rest_api"]["client"]["auth"] = {
+        "type": "api_key", "location": "query", "name": "subscription-key", "api_key": API_KEY,
+    }
+    declare(work, "adventure_works", None, {"products": entry("Products")}, config=config)
+
+    code = ingest()
+
+    out = capfd.readouterr()
+    assert code == 2, out.err
+    assert "products" in out.err
+    assert landed(lake) == {}, "a resource that failed landed rows"
+    assert feed.requested and all(
+        parse_qs(urlsplit(p).query).get("subscription-key") == [API_KEY] for p in feed.requested
+    ), f"the declared api key was not sent: {feed.requested}"
+    assert API_KEY not in out.out and API_KEY not in out.err, out.err
+
+
 # --------------------------------------------------------------------------- AC7, AC14, EC3, EC6: declarations checked
 
 
