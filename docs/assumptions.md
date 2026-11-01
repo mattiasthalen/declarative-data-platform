@@ -25,6 +25,8 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A17 | The feed's page order holds between the requests of one load: its next link pages by `$skip` with no `$orderby`. | ingest | A row that moves between pages mid-load lands twice or not at all in that load. |
 | A18 | A flow run starts in the directory `prefect deploy` ran from (the repo root, through `task orchestrate:deploy`), and the work pool's workers have the repo at that path, with the lake and the DuckDB file reachable from it. The pool admits one flow run more than there are sources, since `run` waits on its children while they all ingest at once; a child that cannot start within 10 minutes is cancelled. Anyone who can create a flow run can choose the commands it runs (the command parameters, ADR-0024), so Prefect API access is code execution on the workers. | orchestrate | An `ingest-source` or `build` run fails on a missing file or builds an empty lake; children of `run` stay Scheduled until `run` cancels them. |
 | A19 | Prefect resolves alongside dbt-core and dlt in one lock. | orchestrate | `uv lock` fails, or pins dbt-core or dlt outside their ranges in `pyproject.toml`. |
+| A20 | The committed Products snapshot is representative of the live feed: same fields, same quirks. | simulate | The live feed's measured facts change (row count, a field added or renamed, product lines no longer padded) and `src/simulate/adventure_works__products.jsonl` was not refreshed. |
+| A21 | The simulated lake's history exercises the crt rules CI cares about: every change kind lands at least once in CI's seeded run. | ci | The CI seed's run lands no row of some change kind (`tests/simulate/test_simulate.py::test_change_kinds` fails on it). |
 
 ## Measured (2026-10-30, the AdventureWorks OData feed)
 
@@ -33,6 +35,10 @@ What the design still assumes, and how you would know it stopped holding; then f
 - Dates are plain `YYYY-MM-DD` with no time or offset, `ModifiedDate` included (2026-10-31).
 - Products: 504 rows; every `ModifiedDate` is 2014-02-08.
 - `ProductLine` is padded (`'R '`, `'M '`, `'T '`, `'S '`) or null (225 rows). `Color` is null for 247. `SellEndDate` is null for 402.
+
+## Measured (2026-11-01, the AdventureWorks OData feed)
+
+- Products: 504 rows, every `ModifiedDate` 2014-02-08; `ProductLine` null for 226, `Color` for 248, `SellEndDate` for 406 (the 2026-10-30 counts above were off by a few). The committed snapshot, `src/simulate/adventure_works__products.jsonl`, matches the feed row for row.
 
 ## Measured (2026-10-31, CI)
 

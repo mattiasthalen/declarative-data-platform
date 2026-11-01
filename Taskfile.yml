@@ -50,6 +50,11 @@ tasks:
     cmds:
       - uv run ingest -- {{.CLI_ARGS}}
 
+  simulate:
+    desc: Append one seeded, changed copy of the latest Products load to the lake
+    cmds:
+      - uv run simulate {{.CLI_ARGS}}
+
   build:
     desc: Build every layer into the target's DuckDB file (TARGET=dev by default)
     cmds:

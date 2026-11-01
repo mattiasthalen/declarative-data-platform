@@ -174,3 +174,65 @@ Pass when all of these hold:
    concurrency limits and timeouts; `orchestrate/flows.py`).
 3. Every command it gives exists: each task appears in `uv run task --list`, and each
    variable it names is one the deploy or the worker reads.
+
+# Judged checks for story #25 (seeded change simulator)
+
+Three rows of story #25 are judged at review. The reviewer reads the files named and
+records pass or fail for each line below.
+
+## AC9: `task simulate`
+
+`tests/simulate/test_simulate.py::test_cli_surface` runs `uv run task --list` and
+`uv run simulate --help`. The reviewer reads the Taskfile.
+
+Pass when all of these hold:
+
+1. `Taskfile.yml` has a task `simulate` with a `desc`, so `task --list` shows it.
+2. Its `cmds` are exactly one command, `uv run simulate`, with no `--seed` and no
+   `--loads`: one load, a random seed, into the live lake (`$LAKE_ROOT`, or the default
+   lake ingest lands in). It passes no `{{.CLI_ARGS}}` rewrite that changes those
+   defaults; forwarding `{{.CLI_ARGS}}` unchanged is fine.
+3. Nothing in the task deletes, moves or rewrites files in the lake, and it does not run
+   `task ingest`, `task generate` or `dbt build`.
+4. `uv run simulate --help` names `--seed` and `--loads` and says what each does.
+
+## AC13: the docs drafted in the design interview
+
+The run folder's `docs/` holds the drafts. Compare the repo against them.
+
+Pass when all of these hold:
+
+1. `docs/adr/` holds ADR-0027 with the draft's title, status, context, decision, rejected
+   alternatives and consequences. A wording change is fine only where the build proved the
+   draft wrong, and it says what changed. Renumbering after a collision with a parallel
+   story is fine when the links follow.
+2. `docs/adr/README.md` has ADR-0027's index row.
+3. ADR-0014 ends with the drafted addendum (the simulated lake runs beside the hand-written
+   lakes in `tests/test_end_to_end.py`, not instead of them), and its original text is
+   otherwise unchanged.
+4. `docs/lexicon.md` has the entry *late arrival* as drafted, and no other entry changed.
+5. `docs/assumptions.md` has A20 and A21 as drafted (renumbered after a collision is fine
+   when the links follow), and no other row changed.
+6. The README tour names `task simulate`, and the root `CLAUDE.md` layout names
+   `src/simulate/`.
+7. Nothing in the repo's docs says the simulator lives under `src/ingest/`, runs through a
+   dlt pipeline, or simulates a resource other than Products.
+
+## EC7: a real ingest after a simulated load
+
+A simulated load lands, then a real `task ingest` runs. The real load's id must be later
+than the simulated one, so conform appends it as the newest load.
+
+Pass when all of these hold:
+
+1. On a lake that holds Products loads, the simulator stamps each new load with the current
+   time, or one second after the latest load id when the clock is behind it (AC5, EC4).
+   It never stamps a load id ahead of the clock unless the lake's latest load is itself
+   ahead of it. Read the code that chooses the load id.
+2. On an empty lake it stamps 2014-02-09 onward, so any later real load (stamped now by
+   dlt) is newer than every simulated one.
+3. dlt's load id for a real ingest is the current time in epoch seconds, so (1) and (2)
+   leave the real load's id the largest; conform's incremental filter (load id greater than
+   the newest staged) then appends it.
+4. The evidence stage shows one live round trip: `task simulate`, then `task ingest`, then
+   `task build`, with the real load's id larger than the simulated one and the build green.

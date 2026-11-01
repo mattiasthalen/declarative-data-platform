@@ -15,3 +15,7 @@ Rejected: advisory CI, because a red pull request could still merge; one job run
 ## Consequences
 
 A pull request cannot merge while drifted or red. Job names `check` and `test` are part of the ruleset: renaming a job means updating the ruleset in the same change. Anyone with admin rights can switch the ruleset off in the repository settings. Story 2's second delivery replaces the synthetic lake with the seeded simulator's lake inside the same `test` job. Rulesets on a private repository need a paid GitHub plan (A9); without one CI is advisory again.
+
+## Addendum (2026-11-01, story #25)
+
+The seeded simulator's lake (ADR-0027) runs beside the hand-written synthetic lakes in the same `test` job, not instead of them: each hand-written lake pins one exact scenario, while the simulated lake checks that a longer, seeded history builds and answers the business question.
