@@ -127,15 +127,32 @@ def load_yaml(path: Path) -> Any:
 
 def check(path: Path, config: dict, entry: dict) -> None:
     """Refuse, naming ``path``, a declaration dlt would not build."""
+    for headers in declared_headers(config, entry):
+        for header, value in headers.items():
+            # dlt accepts any value here; requests refuses a non-text one only when it sends it,
+            # and its message quotes the value.
+            if not isinstance(value, str):
+                raise Refused(f"{path}: header {header!r} must be text; quote it")
     try:
         build(config, entry)
     except Exception as error:
         raise Refused(f"{path}: {without_values(error)}") from None
 
 
+def declared_headers(config: dict, entry: dict) -> list[dict]:
+    def headers(mapping: Any, *keys: str) -> Any:
+        for key in keys:
+            mapping = mapping.get(key) if isinstance(mapping, dict) else None
+        return mapping
+
+    found = [headers(config, "client", "headers"), headers(config, "resource_defaults", "endpoint", "headers"),
+             headers(entry, "endpoint", "headers")]
+    return [h for h in found if isinstance(h, dict)]
+
+
 def without_values(error: Exception) -> str:
-    """dlt's validation message, cut to its most specific complaint. dlt quotes every enclosing
-    value whole, which would print a declared header, a token included, to the pod's log."""
+    """Where dlt's validation failed, without the value it failed on: dlt quotes values whole,
+    which would print a declared header or key, a token included, to the pod's log."""
     from dlt.common.exceptions import DictValidationException
 
     if not isinstance(error, DictValidationException):
@@ -148,9 +165,9 @@ def without_values(error: Exception) -> str:
             yield from leaves(nested)
 
     deepest = max(leaves(error), key=lambda e: e.path.count("/"))
-    if isinstance(deepest.value, (dict, list)):
-        return f"Path `{deepest.path}`: field `{deepest.field}` is not valid"
-    return str(deepest)
+    if deepest.field is None:  # dlt names the unexpected keys, never their values
+        return str(deepest)
+    return f"Path `{deepest.path}`: field `{deepest.field}` is not valid"
 
 
 # --------------------------------------------------------------------------- rest_api
@@ -170,6 +187,11 @@ def origin(url: str) -> tuple[str, str, int | None]:
     parts = parse_url(url)
     scheme = (parts.scheme or "").lower()
     return scheme, (parts.host or "").lower(), parts.port or DEFAULT_PORTS.get(scheme)
+
+
+def spelled(where: tuple[str, str, int | None]) -> str:
+    scheme, host, port = where
+    return f"{scheme}://{host}:{port}"
 
 
 def odata_paginator():
@@ -196,12 +218,13 @@ def guarded_session(base_url: str):
     retrying_send = session.send
 
     def send(request, **kwargs):
+        # The messages name origins only: a URL can carry a declared api key by now.
         if origin(request.url) != home:
-            raise ValueError(f"{request.url} leaves the feed's origin {home}")
+            raise ValueError(f"a request to {spelled(origin(request.url))} leaves the feed's origin {spelled(home)}")
         kwargs["allow_redirects"] = False
         response = retrying_send(request, **kwargs)
         if response.is_redirect:
-            raise ValueError(f"{request.url} redirects to {response.headers.get('location')}; redirects are not followed")
+            raise ValueError(f"{spelled(home)} answered with a redirect; redirects are not followed")
         return response
 
     session.send = send
@@ -249,9 +272,18 @@ def land(source: Source, resource_name: str) -> None:
     pipeline_name = f"{source.name}__{resource_name}"
     pipeline = dlt.pipeline(pipeline_name=pipeline_name, destination=destination, dataset_name=DATASET)
     # The lake holds the cursor (ADR-0016). Local state left by an earlier run would win over a
-    # lake that lost its own, so the pipeline starts from what the lake holds and nothing else.
-    pipeline = pipeline.drop()
+    # lake that lost its own, so the pipeline starts from what the lake holds. A package an
+    # interrupted run left half loaded is kept: run() finishes it first, rewriting the files it
+    # already wrote, where dropping it would leave them to be landed again under a new load id.
+    if not pipeline.has_pending_data:
+        pipeline = pipeline.drop()
     pipeline.run(resource, table_name=pipeline_name, loader_file_format="parquet")
+
+
+def without_queries(message: str) -> str:
+    """``message`` with each URL's query cut: dlt and requests quote the URL they failed on, and
+    its query can carry a declared api key."""
+    return re.sub(r"(https?://[^\s?'\"]*)\?[^\s'\"]*", r"\1?…", message)
 
 
 def run(sources: list[Source], resource: str | None = None) -> int:
@@ -271,7 +303,7 @@ def run(sources: list[Source], resource: str | None = None) -> int:
                 landed += 1
             except Exception as error:  # one resource's failure must not stop the others
                 failed += 1
-                print(f"{source.name}__{name} failed: {error}", file=sys.stderr)
+                print(f"{source.name}__{name} failed: {without_queries(str(error))}", file=sys.stderr)
     if failed:
         print(f"{failed} failed, {landed} landed", file=sys.stderr)
     if not landed:
