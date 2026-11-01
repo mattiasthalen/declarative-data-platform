@@ -202,16 +202,16 @@ The run folder's `docs/` holds the drafts. Compare the repo against them.
 
 Pass when all of these hold:
 
-1. `docs/adr/` holds ADR-0020 with the draft's title, status, context, decision, rejected
+1. `docs/adr/` holds ADR-0027 with the draft's title, status, context, decision, rejected
    alternatives and consequences. A wording change is fine only where the build proved the
    draft wrong, and it says what changed. Renumbering after a collision with a parallel
    story is fine when the links follow.
-2. `docs/adr/README.md` has ADR-0020's index row.
+2. `docs/adr/README.md` has ADR-0027's index row.
 3. ADR-0014 ends with the drafted addendum (the simulated lake runs beside the hand-written
    lakes in `tests/test_end_to_end.py`, not instead of them), and its original text is
    otherwise unchanged.
 4. `docs/lexicon.md` has the entry *late arrival* as drafted, and no other entry changed.
-5. `docs/assumptions.md` has A18 and A19 as drafted (renumbered after a collision is fine
+5. `docs/assumptions.md` has A20 and A21 as drafted (renumbered after a collision is fine
    when the links follow), and no other row changed.
 6. The README tour names `task simulate`, and the root `CLAUDE.md` layout names
    `src/simulate/`.

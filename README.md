@@ -29,7 +29,7 @@ uv run task simulate                # append a changed copy of the latest Produc
 `uv run simulate --seed N --loads K` appends K seeded, changed loads to the lake: edits,
 corrections, source nulls, late arrivals, new products and products dropping out of a load. On an
 empty lake it lands a committed snapshot of the feed first, so a seed always gives the same lake;
-CI builds against seed 7 (ADR-0020).
+CI builds against seed 7 (ADR-0027).
 
 `uv run ingest --list` names the declared sources, and `uv run ingest SOURCE` (or
 `SOURCE__RESOURCE`) lands one; it exits 0 when everything it ran landed, 1 when some resource

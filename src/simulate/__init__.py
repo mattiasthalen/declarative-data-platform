@@ -1,4 +1,4 @@
-"""Simulate source change: append seeded, changed copies of the latest Products load (ADR-0020).
+"""Simulate source change: append seeded, changed copies of the latest Products load (ADR-0027).
 
 ``uv run simulate [--seed N] [--loads K]`` appends K loads to ``$LAKE_ROOT`` in dlt's landed
 shape, ``adventure_works__products/date=YYYY-MM-DD/hour=HH/<load_id>.<file_id>.parquet`` with the

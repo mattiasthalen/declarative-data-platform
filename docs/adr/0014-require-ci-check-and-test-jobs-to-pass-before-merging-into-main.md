@@ -18,4 +18,4 @@ A pull request cannot merge while drifted or red. Job names `check` and `test` a
 
 ## Addendum (2026-11-01, story #25)
 
-The seeded simulator's lake (ADR-0020) runs beside the hand-written synthetic lakes in the same `test` job, not instead of them: each hand-written lake pins one exact scenario, while the simulated lake checks that a longer, seeded history builds and answers the business question.
+The seeded simulator's lake (ADR-0027) runs beside the hand-written synthetic lakes in the same `test` job, not instead of them: each hand-written lake pins one exact scenario, while the simulated lake checks that a longer, seeded history builds and answers the business question.

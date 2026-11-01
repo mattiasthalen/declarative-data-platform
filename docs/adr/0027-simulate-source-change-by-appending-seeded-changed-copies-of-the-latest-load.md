@@ -1,4 +1,4 @@
-# ADR-0020 — Simulate source change by appending seeded, changed copies of the latest load
+# ADR-0027 — Simulate source change by appending seeded, changed copies of the latest load
 
 **Status:** Accepted (2026-11-01)
 
