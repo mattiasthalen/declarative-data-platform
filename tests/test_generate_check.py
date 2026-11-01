@@ -1,4 +1,4 @@
-"""`generate --check` and `task check` report drift and write nothing (story 2, D1: AC1-AC9, EC1-EC11).
+"""`generate --check` and `task check` report drift and write nothing (story 2, D1: AC1-AC9, EC1-EC12).
 
 Each test runs the generators as subprocesses, ``uv run <layer> generate --check`` or
 ``uv run task check``, in one shared copy of the repo, without a dbt build. The copy's
@@ -107,12 +107,15 @@ def paths(found: set[tuple[str, str]], kind: str | None = None) -> set[str]:
 
 def section(step: Step, ws: Workspace, path: str) -> list[str]:
     """The output lines under ``path``'s status line, up to the next status line or the summary."""
-    lines = step.output.splitlines()
+    return _entry(step.output.splitlines(), ws, path, step.output)
+
+
+def _entry(lines: list[str], ws: Workspace, path: str, output: str) -> list[str]:
     start = next(
         (i for i, line in enumerate(lines) if (m := STATUS.match(line)) and normalize(ws, m.group(2)) == path),
         None,
     )
-    assert start is not None, f"no status line for {path}:\n{step.output[-3000:]}"
+    assert start is not None, f"no status line for {path}:\n{output[-3000:]}"
     out = [lines[start]]
     for line in lines[start + 1 :]:
         if STATUS.match(line) or "task generate" in line:
@@ -582,6 +585,16 @@ def _check_raw(ws: Workspace, layer: str) -> Step:
     return Step(" ".join(args), args, proc.returncode, output)
 
 
+def _raw_section(step: Step, ws: Workspace, path: str) -> list[str]:
+    """``section``, but split on ``\\n`` alone, so a carriage return stays in the line that carries it."""
+    return _entry(step.output.split("\n"), ws, path, step.output)
+
+
+def _diff_lines(lines: list[str]) -> list[str]:
+    """The ``-``/``+`` lines of a unified diff, without its ``---``/``+++`` file headers."""
+    return [line for line in lines if line.startswith(("-", "+")) and not line.startswith(("---", "+++"))]
+
+
 def test_crlf_with_a_real_edit_names_line_endings_and_diffs_only_the_edit(ws):
     """EC11: a generated file rewritten with CRLF line endings and one line's text changed is
     `changed` alone; a line under it names the line endings, and the diff shows the real edit with
@@ -603,14 +616,8 @@ def test_crlf_with_a_real_edit_names_line_endings_and_diffs_only_the_edit(ws):
         f"no line under {path} names the line endings:\n" + "\n".join(under)
     )
 
-    raw = step.output.split("\n")
-    start = next(i for i, line in enumerate(raw) if (m := STATUS.match(line)) and normalize(ws, m.group(2)) == path)
-    raw_under = []
-    for line in raw[start + 1 :]:
-        if STATUS.match(line) or "task generate" in line:
-            break
-        raw_under.append(line)
-    diff = [line for line in raw_under if line.startswith(("-", "+")) and not line.startswith(("---", "+++"))]
+    raw_under = _raw_section(step, ws, path)[1:]
+    diff = _diff_lines(raw_under)
     carried = [line for line in diff if line.endswith("\r")]
     assert not carried, f"diff lines under {path} end in a carriage return:\n" + "\n".join(map(repr, carried))
     assert any(EDIT_MARK in line for line in diff), (
@@ -619,3 +626,78 @@ def test_crlf_with_a_real_edit_names_line_endings_and_diffs_only_the_edit(ws):
     assert any(line[1:].rstrip("\r") == original for line in diff), (
         f"the diff under {path} does not show the edited line's old text:\n" + "\n".join(raw_under)
     )
+
+
+# --------------------------------------------------------------------------- EC12
+
+LINE_ENDING_NOTE = re.compile(r"line ending", re.IGNORECASE)
+FINAL_NEWLINE_NOTE = re.compile(r"final newline|newlines? at the end|end of (the )?file", re.IGNORECASE)
+
+
+def _named_whitespace_drift(ws: Workspace, target: Path, notes: dict[str, re.Pattern]) -> list[str]:
+    """Run conform's check on a drifted ``target`` and assert EC12's rules for it: ``changed``
+    alone, a line under it naming each difference in ``notes`` (what -> pattern), and no diff
+    line carrying a carriage return. Returns the raw lines under the entry."""
+    step = _check_raw(ws, "conform")
+    drifted(step, "conform")
+    path = rel(ws, target)
+    assert report(ws, step) == {("changed", path)}, step.output[-3000:]
+    under = _raw_section(step, ws, path)[1:]
+    shown = "\n".join(map(repr, under))
+    for what, pattern in notes.items():
+        assert any(pattern.search(line) for line in under), f"no line under {path} names the {what}:\n{shown}"
+    carried = [line for line in _diff_lines(under) if "\r" in line]
+    assert not carried, f"diff lines under {path} carry a carriage return:\n" + "\n".join(map(repr, carried))
+    return under
+
+
+def _no_line_says_only(ws: Workspace, target: Path, under: list[str]) -> None:
+    """With more than one kind of difference present, a note saying "only" one of them differs
+    contradicts the others."""
+    claims = [line for line in under if re.search(r"\bonly\b", line, re.IGNORECASE)]
+    assert not claims, (
+        f"{rel(ws, target)} has more than one kind of difference, yet a line under it says 'only':\n"
+        + "\n".join(map(repr, claims))
+    )
+
+
+def test_lone_cr_line_endings_are_named_and_kept_out_of_the_diff(ws):
+    """EC12 (Q2): a generated file rewritten with lone CR line endings gets a line under `changed`
+    naming the line endings, and no diff line carries a carriage return."""
+    target = generated_file(ws, "conform")
+    target.write_bytes(target.read_bytes().replace(b"\n", b"\r"))
+    _named_whitespace_drift(ws, target, {"line endings": LINE_ENDING_NOTE})
+
+
+def test_crlf_and_missing_final_newline_are_both_named_without_contradiction(ws):
+    """EC12 (Q2): a generated file with CRLF line endings and its final newline removed gets a line
+    naming the line endings and a line naming the final newline, and no line says "only" one of
+    them differs."""
+    target = generated_file(ws, "conform")
+    content = target.read_bytes()
+    assert content.endswith(b"\n"), f"{rel(ws, target)} has no final newline to remove"
+    target.write_bytes(content[:-1].replace(b"\n", b"\r\n"))
+    under = _named_whitespace_drift(
+        ws, target, {"line endings": LINE_ENDING_NOTE, "final newline": FINAL_NEWLINE_NOTE}
+    )
+    _no_line_says_only(ws, target, under)
+
+
+def test_real_edit_and_missing_final_newline_names_the_final_newline(ws):
+    """EC12 (Q3): a generated file with one line's text changed and its final newline removed gets
+    a line under `changed` naming the final newline, the diff shows the edit, and no line says
+    "only" the newline differs."""
+    target = generated_file(ws, "conform")
+    content = target.read_text(encoding="utf-8")
+    assert content.endswith("\n"), f"{rel(ws, target)} has no final newline to remove"
+    lines = content[:-1].split("\n")
+    nonblank = [i for i, line in enumerate(lines) if line.strip()]
+    assert len(nonblank) >= 2, f"{rel(ws, target)} needs two non-blank lines: one to edit, one to end on"
+    lines[nonblank[0]] = f"{lines[nonblank[0]]} -- {EDIT_MARK}"
+    target.write_bytes("\n".join(lines).encode("utf-8"))
+
+    under = _named_whitespace_drift(ws, target, {"final newline": FINAL_NEWLINE_NOTE})
+    assert any(EDIT_MARK in line for line in _diff_lines(under)), (
+        f"the diff under {rel(ws, target)} does not show the edit:\n" + "\n".join(under)
+    )
+    _no_line_says_only(ws, target, under)
