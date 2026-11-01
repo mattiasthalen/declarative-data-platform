@@ -1,6 +1,6 @@
 # ADR-0012 — Lay the repo out by kind, and let a generator own only folders that carry its README
 
-**Status:** Accepted (2026-10-31)
+**Status:** Accepted (2026-10-31); partly superseded by [ADR-0015](0015-keep-each-layers-files-in-layer-named-folders-and-scope-agent-rules-to-them.md) (where macros live, 2026-10-31)
 
 ## Context
 
