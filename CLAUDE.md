@@ -23,8 +23,9 @@ themselves when you read a file of that layer:
 
 `**/<layer>/` means that layer's folder under `src/`, `models/`, `macros/` and `tests/`. A new
 file of a layer goes in one of its folders, or its rules will not reach the next agent (A11).
-Files outside them, such as `src/ownership/` or `macros/generate_schema_name.sql`, serve every
-layer and follow only this file.
+Files outside them, such as `src/ownership/`, `macros/generate_schema_name.sql` or
+`orchestrate/` (the Prefect flows and `prefect.yaml` of the scheduled run), serve every layer
+and follow only this file.
 
 ## Rules that hold everywhere
 
@@ -35,8 +36,8 @@ layer and follow only this file.
   generator wrote is that generator's; change the declarations and regenerate (ADR-0012).
 - **`__` separates concerns in every name**: schemas (`serve__uss`), models
   (`adventure_works__products`), columns (`_dlt__load_id`).
-- **One `dbt build` per target at a time.** DuckDB's file lock refuses a second; there is no
-  locking of our own (A4).
+- **One `dbt build` per target at a time.** DuckDB's file lock refuses a second. Scheduled
+  runs are held to one by `orchestrate/prefect.yaml`; a hand-run build is not (A4).
 
 ## Proving a change
 

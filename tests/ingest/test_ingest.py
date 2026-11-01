@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import re
 import shutil
 import socket
+import subprocess
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -1202,7 +1204,30 @@ def test_interrupted_load_is_not_landed_twice(feed, work, lake, monkeypatch, cap
 # --------------------------------------------------------------------------- AC16: the tasks
 
 
-def test_taskfile_ingest_tasks_call_the_cli():
+def _run_ingest_source(tmp_path: Path, *names: str) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
+    """Run the real ``task ingest:source -- NAMES`` from a copy of Taskfile.yml, with a fake ``uv``
+    first on PATH that records its arguments, one call per line, instead of ingesting."""
+    task = shutil.which("task")
+    assert task, "no task binary on PATH (go-task-bin is a dev dependency)"
+    shutil.copy(REPO / "Taskfile.yml", tmp_path / "Taskfile.yml")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "uv-calls"
+    fake_uv = bin_dir / "uv"
+    fake_uv.write_text(f'#!/bin/sh\nprintf "%s\\037" "$@" >> "{calls}"\necho >> "{calls}"\n')
+    fake_uv.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"}
+    argv = [task, "ingest:source"] + (["--", *names] if names else [])
+    result = subprocess.run(argv, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
+    recorded = (
+        [line.rstrip("\x1f").split("\x1f") for line in calls.read_text().splitlines()]
+        if calls.exists()
+        else []
+    )
+    return result, recorded
+
+
+def test_taskfile_ingest_tasks_call_the_cli(tmp_path):
     """AC16: task ingest, ingest:list and ingest:source -- SOURCE call uv run ingest, --list and SOURCE."""
     tasks = yaml.safe_load((REPO / "Taskfile.yml").read_text())["tasks"]
 
@@ -1212,15 +1237,16 @@ def test_taskfile_ingest_tasks_call_the_cli():
 
     assert cmds("ingest") == ["uv run ingest"]
     assert cmds("ingest:list") == ["uv run ingest --list"]
-    source = cmds("ingest:source")
-    assert len(source) == 1 and re.fullmatch(r"uv run ingest \{\{ ?\.CLI_ARGS ?\}\}", source[0]), source
+
+    result, calls = _run_ingest_source(tmp_path, "adventure_works")
+    assert result.returncode == 0, result.stdout + result.stderr
+    # `--` before the name is how ingest is told the name is not one of its options.
+    assert calls == [["run", "ingest", "--", "adventure_works"]], calls
 
 
-def test_taskfile_ingest_source_requires_a_name():
+def test_taskfile_ingest_source_requires_a_name(tmp_path):
     """AC16, A6: ``task ingest:source`` with no name must not run every source: the task refuses to
-    run unless CLI_ARGS is set."""
-    task = yaml.safe_load((REPO / "Taskfile.yml").read_text())["tasks"]["ingest:source"]
-    checks = [p["sh"] if isinstance(p, dict) else p for p in task.get("preconditions", [])]
-    assert any(
-        re.search(r"test\s+-n\s+[\"']?\{\{ ?\.CLI_ARGS ?\}\}", c) for c in checks
-    ), f"ingest:source has no precondition on CLI_ARGS: {checks}"
+    run, and nothing is called."""
+    result, calls = _run_ingest_source(tmp_path)
+    assert result.returncode != 0, f"ingest:source ran with no name: {result.stdout + result.stderr}"
+    assert calls == [], f"ingest:source with no name called uv: {calls}"

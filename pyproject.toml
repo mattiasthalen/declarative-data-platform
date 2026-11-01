@@ -15,6 +15,7 @@ serve = "serve:main"
 [dependency-groups]
 ingest = ["dlt[parquet]>=1.32,<1.33"]
 dbt = ["dbt-core>=1.12,<1.13", "dbt-duckdb>=1.11,<1.12"]
+orchestrate = ["prefect>=3.9,<3.10"]
 dev = ["pytest>=8", "duckdb", "go-task-bin>=3.54"]
 
 [tool.uv]

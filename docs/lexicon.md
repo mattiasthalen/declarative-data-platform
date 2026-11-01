@@ -6,6 +6,8 @@ The words someone needs defined to talk about using or developing the platform. 
 
 **resource** — One object a *source* serves, such as its products, landed by its own pipeline into its own lake folder and named `<source>__<resource>`. Distinct from dlt's resource, the code that yields rows. See [ADR-0018](adr/0018-run-ingest-per-source-and-report-through-exit-codes.md).
 
+**scheduled run** — One firing of the schedule: every *source* ingested in its own flow run, then one build of the target. Distinct from a *batch*, the Anchor-writing `dbt build` it may contain. See [ADR-0021](adr/0021-ingest-each-source-in-its-own-run-then-build-once.md).
+
 **load** — One extraction of one *resource*, as it lands in the lake, named by its dlt load id. Distinct from *batch*: one *batch* can apply several loads.
 
 **batch** — One `dbt build` that writes Anchor rows, numbered in the load log; Anchor's Metadata value. Distinct from *load*. See [ADR-0007](adr/0007-number-loads-with-a-batch-log-in-anchor-metadata.md).
