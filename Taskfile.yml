@@ -9,7 +9,7 @@ tasks:
       - uv run serve generate
 
   check:
-    desc: Fail if any layer's committed models differ from what its declarations produce
+    desc: Fail if any layer's committed models or README diagram differ from what its declarations produce
     silent: true
     cmds:
       - |

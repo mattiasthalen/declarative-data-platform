@@ -89,7 +89,7 @@ erDiagram
 uv sync
 uv run task ingest                  # land every declared resource under ./lake (or $LAKE_ROOT)
 uv run task generate                # regenerate every layer's models
-uv run task check                   # fail if committed models drifted from the declarations
+uv run task check                   # fail if committed models or diagrams drifted from the declarations
 uv run task build                   # build warehouse/dev.duckdb (TARGET=prod for the other)
 uv run task simulate                # append a changed copy of the latest Products load (the feed is static)
 ```
