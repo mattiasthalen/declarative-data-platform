@@ -18,6 +18,8 @@ concurrency:
 env:
   # Fail on a uv.lock that no longer matches pyproject.toml instead of re-locking in CI.
   UV_LOCKED: "1"
+  # uv fetches CPython from releases.astral.sh by default; take it from GitHub, the host A7 allows.
+  UV_PYTHON_INSTALL_MIRROR: https://github.com/astral-sh/python-build-standalone/releases/download
 
 jobs:
   check:

@@ -112,6 +112,10 @@ def apply(root: Path, drifts: list[Drift]) -> None:
 DIFF_LINES = 40
 
 
+def _trailing_newlines(text: str) -> int:
+    return len(text) - len(text.rstrip("\n"))
+
+
 def describe(drifts: list[Drift]) -> str:
     """The --check report: a line per drifted path, a capped diff under each changed file, a summary."""
     out = []
@@ -124,12 +128,13 @@ def describe(drifts: list[Drift]) -> str:
         except UnicodeDecodeError:
             out.append("binary file, no diff shown")
             continue
-        if "\r\n" in committed and "\r\n" not in d.generated:
-            out.append("line endings differ: the committed file has CRLF, the generator writes LF")
-            committed = committed.replace("\r\n", "\n")
+        if "\r" in committed and "\r" not in d.generated:
+            endings = "CRLF" if "\r\n" in committed else "CR"
+            out.append(f"line endings differ: the committed file has {endings}, the generator writes LF")
+            committed = committed.replace("\r\n", "\n").replace("\r", "\n")
+        if _trailing_newlines(committed) != _trailing_newlines(d.generated):
+            out.append("the newlines at the end of the file differ")
         if committed.rstrip("\n") == d.generated.rstrip("\n"):
-            if committed != d.generated:
-                out.append("only the newlines at the end of the file differ")
             continue
         lines = [
             line.rstrip("\n")
