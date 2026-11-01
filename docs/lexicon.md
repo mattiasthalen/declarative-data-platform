@@ -6,6 +6,8 @@ The words someone needs defined to talk about using or developing the platform. 
 
 **resource** — One object a *source* serves, such as its products, landed by its own pipeline into its own lake folder and named `<source>__<resource>`. Distinct from dlt's resource, the code that yields rows. See [ADR-0018](adr/0018-run-ingest-per-source-and-report-through-exit-codes.md).
 
+**declaration** — A file a person writes to say what the platform holds: a *source*'s resources in `sources/`, its contracts in `contracts/`, the Anchor model and its mappings in `anchor/`. Distinct from generated output, which generators write from the declarations and nobody edits by hand, and from a declaration in code. See [ADR-0012](adr/0012-lay-the-repo-out-by-kind-with-generator-owned-folders.md).
+
 **scheduled run** — One firing of the schedule: every *source* ingested in its own flow run, then one build of the target. Distinct from a *batch*, the Anchor-writing `dbt build` it may contain. See [ADR-0021](adr/0021-ingest-each-source-in-its-own-run-then-build-once.md).
 
 **load** — One extraction of one *resource*, as it lands in the lake, named by its dlt load id. Distinct from *batch*: one *batch* can apply several loads.
