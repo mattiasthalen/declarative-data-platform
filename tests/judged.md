@@ -261,3 +261,27 @@ Pass when all of these hold:
 
 A failure in (1)-(4) sends the type format back to the spec ([S1]), and the assumption is
 recorded as broken.
+
+# Judged checks for story #37 (hero artwork at the top of the README)
+
+The reference for the drawing is `hero-mockup.svg`, the mockup approved in the design interview
+and kept with the run's spec. The reviewer records pass or fail for each line below.
+
+## Hero drawing (AC8)
+
+Render `docs/hero.svg` and place it beside `hero-mockup.svg`. Pass when all hold:
+
+1. Left to right: the wordmark DECLARATIVE / DATA PLATFORM on two lines with the layer line `ingest · conform · integrate · serve` under it; nine raw tiles slightly out of line; a fanned stack of three pages, the front one with indented key and value lines; a star of one centre tile and eight tiles on a ring, each joined to the centre.
+2. A dotted trail of three dots sits in each gap and brightens toward the star.
+3. The gaps between raw, pages and star are equal to the eye.
+4. Raw tiles, pages, dots and star tiles share one shade; the centre tile is the only thing in the accent colour.
+5. No line shows through or beneath a tile or page.
+
+## Hero on GitHub (AC9, EC4)
+
+Screenshots of the branch's README on github.com: light and dark theme, desktop width and 390px. Pass when all hold:
+
+1. The README opens with the hero; no `# declarative-data-platform` heading above or below it.
+2. The wordmark is in Spectral, the layer line in Inter: neither falls back to Georgia, Times or Arial.
+3. On the light theme the hero reads as a dark card with rounded corners; on dark it sits on the page with no seam but its corners.
+4. At 390px the whole banner is visible, nothing cropped, and both the wordmark and the layer line are legible.
