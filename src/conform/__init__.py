@@ -1,4 +1,4 @@
-"""Generate the raw and conform dbt models from the ODCS v3 data contracts in contracts/.
+"""Generate the raw and conform dbt models from the ODCS v3 data contracts in contracts/<source>/.
 
 Per contract, a ``raw`` view reads the lake files of its resource, and a ``conform`` staged
 model appends every load newer than its newest (ADR-0009): each property extracted from the
@@ -209,13 +209,19 @@ def schema_file(name: str, contract: dict, properties: list[dict]) -> str:
 def packages(root: Path) -> dict[Path, dict[str, str]]:
     out: dict[Path, dict[str, str]] = {}
     for path in sorted((root / CONTRACTS).glob("*.yaml")):
+        raise ContractError(f"{path}: a contract lives in its source's folder, contracts/<source>/")
+    for path in sorted((root / CONTRACTS).glob("*/*.yaml")):
         contract = load(path)
         domain = contract.get("domain")
         if not domain or not SNAKE.match(domain):
             raise ContractError(f"{path}: domain must name the source in snake_case")
+        if domain != path.parent.name:
+            raise ContractError(f"{path}: domain {domain!r} differs from its folder {path.parent.name!r}")
         obj = contract["schema"][0]
         name = obj["name"]
         resource = obj.get("physicalName") or name
+        if resource != f"{domain}__{path.stem}":
+            raise ContractError(f"{path}: reads {resource!r}, not its file's resource {domain}__{path.stem}")
         properties = obj.get("properties") or []
         raw = f"raw__{name}"
         out.setdefault(Path("models") / "raw" / domain, {})[f"{raw}.sql"] = raw_model(name, resource)
@@ -232,7 +238,7 @@ def generate(*, check: bool = False) -> int:
     except ContractError as error:
         print(error)
         return 2
-    return ownership.run(GENERATOR, "the data contracts in contracts/", planned, check=check)
+    return ownership.run(GENERATOR, "the data contracts in contracts/<source>/", planned, check=check)
 
 
 def main() -> int:

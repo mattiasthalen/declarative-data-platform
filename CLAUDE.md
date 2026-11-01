@@ -16,7 +16,7 @@ themselves when you read a file of that layer:
 
 | layer | its folders | its rules |
 |---|---|---|
-| ingest | `**/ingest/` | `.claude/rules/ingest.md` |
+| ingest | `**/ingest/`, `sources/` | `.claude/rules/ingest.md` |
 | conform | `**/conform/`, `contracts/`, `models/raw/` | `.claude/rules/conform.md` |
 | integrate | `**/integrate/`, `anchor/` | `.claude/rules/integrate.md` |
 | serve | `**/serve/` | `.claude/rules/serve.md`, and `.claude/rules/uss.md` for all but the hand-written models |

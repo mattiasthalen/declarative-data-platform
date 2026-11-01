@@ -19,3 +19,7 @@ Nygard's format: Context, Decision, Consequences, with a Status. One decision pe
 | [0013](0013-check-generated-output-byte-for-byte-through-the-writer-that-owns-it.md) | Check generated output byte for byte through the writer that owns it | Accepted (2026-10-31) |
 | [0014](0014-require-ci-check-and-test-jobs-to-pass-before-merging-into-main.md) | Require CI's check and test jobs to pass before anything merges into main | Accepted (2026-10-31) |
 | [0015](0015-keep-each-layers-files-in-layer-named-folders-and-scope-agent-rules-to-them.md) | Keep each layer's files in folders named after the layer, and scope agent rules to them | Accepted (2026-10-31) |
+| [0016](0016-declare-each-source-as-dlt-source-config-in-yaml.md) | Declare each source as its dlt source's own configuration, in YAML | Accepted (2026-10-31) |
+| [0017](0017-give-each-source-a-folder-with-one-file-per-resource.md) | Give each source a folder in `sources/` and `contracts/`, one file per resource | Accepted (2026-10-31) |
+| [0018](0018-run-ingest-per-source-and-report-through-exit-codes.md) | Run ingest per source, and report through exit codes 0, 1 and 2 | Accepted (2026-10-31) |
+| [0019](0019-fetch-incremental-resources-from-their-cursor-inclusive.md) | Fetch incremental resources from their last cursor value inclusive | Accepted (2026-10-31) |

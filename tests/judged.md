@@ -77,3 +77,54 @@ Pass when all of these hold:
    (`tests/test_rules_files.py` also checks this).
 5. **The router routes.** The root `CLAUDE.md` says that the layer rules live in
    `.claude/rules/` and load by path, so a reader of the root file knows where the rest is.
+
+# Judged checks for story #17 (ingest declared)
+
+Two acceptance criteria of story #17 are judged at review. The reviewer reads the
+files named and records pass or fail for each.
+
+## AC18: the business question on TransactionHistories
+
+`sources/adventure_works/transaction_histories.yaml` records the approved business
+question (design tree B9, Mattias 2026-10-31) in a comment block.
+
+Pass when all of these hold:
+
+1. The question is there word for word: "What is the total quantity of units sold
+   per calendar month and product line?"
+2. The block states each part of its anatomy: aggregation sum; measure `Quantity`;
+   dimensions calendar month and product line; time every month the source holds
+   (2013-07..2014-08).
+3. The block carries the three definitions, in B9's words:
+   - sold = TransactionType `S` (74,575 rows; `W` work orders and `P` purchases
+     are not sales);
+   - calendar month = month of `TransactionDate` (business date, not ModifiedDate
+     or extraction);
+   - product line = the product's line as of the transaction date, trimmed code,
+     empty its own group.
+4. Nothing in the block contradicts B9 or adds a definition B9 does not make, and
+   the comment is a comment: the file still parses to the same dlt resource entry
+   with it removed.
+
+## AC20: the docs drafted in the design interview
+
+The run folder's `docs/` (`doc-changes.md` and `adr/`) holds the drafts. Compare
+the repo against them.
+
+Pass when all of these hold:
+
+1. `docs/adr/` holds ADR-0016 to ADR-0019 with the drafts' title, status, context,
+   decision, rejected alternatives and consequences. Renumbering after a collision
+   with a parallel story is fine when the links follow. A wording change is fine
+   only where the build proved a draft wrong (the plan names ADR-0019's
+   consequence sentence on repeats at the cursor boundary); it says what changed.
+2. `docs/adr/README.md` has the four index rows.
+3. ADR-0001 and ADR-0012 each end with the drafted `## Addendum 2026-10-31`, and
+   their original text is otherwise unchanged.
+4. `docs/lexicon.md` has the entries *source* and *resource* as drafted, and no
+   other entry changed.
+5. `docs/assumptions.md` has A12 and A13 as drafted (drafted as A7 and A8, renumbered after collisions), and the measured facts of
+   2026-10-31 (the `$filter`/`$orderby`/`$top`/`$select`/`$count` support and the
+   TransactionHistories row counts and date range).
+6. Nothing in the repo's docs still says resources are declared in Python or that
+   contracts sit flat in `contracts/*.yaml`.

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 import yaml
 
-from harness import CONTRACT, REPO, SNAKE, epoch_us, load_id, product, q, require
+from harness import CONTRACT, CONTRACT_PATH, REPO, SNAKE, epoch_us, load_id, product, q, require
 
 PLATFORM = {
     "_dlt__load_id",
@@ -83,7 +83,7 @@ def test_product_line_trimmed(staged):
 
 def test_contract_trims_product_line():
     """AC7 ([14]): the trim lives in the contract as transformLogic: trim(value)."""
-    contract = yaml.safe_load((REPO / "contracts" / f"{CONTRACT}.yaml").read_text())
+    contract = yaml.safe_load((REPO / CONTRACT_PATH).read_text())
     logic = []
 
     def walk(node):
@@ -117,3 +117,18 @@ def test_live_shape_is_read(staged):
     ]
     failed = snap.sql(f"select count(*) from conform.{q(snap.staged())} where len(_contract__cast_failed) > 0")
     assert failed == [(0,)], "a plain-date value failed its cast"
+
+
+def test_product_contract_lives_in_its_source_folder():
+    """AC15 ([2]): the Product contract is contracts/adventure_works/products.yaml, the flat file is gone,
+    its id is unchanged, and the models generated from it keep their names."""
+    assert (REPO / CONTRACT_PATH).is_file()
+    assert not (REPO / "contracts" / f"{CONTRACT}.yaml").exists()
+    assert sorted(p.relative_to(REPO).as_posix() for p in (REPO / "contracts").glob("*.yaml")) == []
+    assert yaml.safe_load((REPO / CONTRACT_PATH).read_text())["id"] == CONTRACT
+    for generated in (
+        f"models/raw/adventure_works/raw__{CONTRACT}.sql",
+        f"models/conform/adventure_works/{CONTRACT}.sql",
+        f"models/conform/adventure_works/{CONTRACT}.yml",
+    ):
+        assert (REPO / generated).is_file(), generated

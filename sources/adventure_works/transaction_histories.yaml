@@ -1,0 +1,18 @@
+# Business question (Daana's anatomy, approved 2026-10-31), answered by a later story:
+#   "What is the total quantity of units sold per calendar month and product line?"
+#   Aggregation: sum. Measure: Quantity.
+#   Dimensions: calendar month, product line.
+#   Time: every month the source holds (2013-07..2014-08).
+#   Definitions:
+#     sold: TransactionType S (74,575 rows; W work orders and P purchases are not sales).
+#     calendar month: month of TransactionDate (business date, not ModifiedDate or extraction).
+#     product line: the product's line as of the transaction date, trimmed code, empty its own group.
+#
+# Fetched incrementally from the last ModifiedDate seen, inclusive (ADR-0019).
+endpoint:
+  path: TransactionHistories
+  params:
+    $filter: "ModifiedDate ge {incremental.start_value}"
+  incremental:
+    cursor_path: ModifiedDate
+    initial_value: "1900-01-01"

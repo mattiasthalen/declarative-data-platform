@@ -18,9 +18,8 @@ from collections.abc import Callable
 import pytest
 import yaml
 
-from harness import CONTRACT, Workspace, require
+from harness import CONTRACT, CONTRACT_PATH, Step, Workspace, require
 
-CONTRACT_PATH = f"contracts/{CONTRACT}.yaml"
 MODEL_PATH = "anchor/model.yaml"
 MAPPING_PATH = "anchor/mappings/PR_Product.yaml"
 
@@ -47,7 +46,7 @@ def edit(ws: Workspace, path: str, change: Callable[[dict], None]) -> None:
     file.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True))
 
 
-def refused(ws: Workspace, layer: str) -> None:
+def refused(ws: Workspace, layer: str) -> Step:
     before = ws.tree()
     step = ws.run("uv", "run", layer, "generate")
     assert step.returncode != 0, f"{layer} generate accepted it:\n{step.output[-3000:]}"
@@ -56,6 +55,7 @@ def refused(ws: Workspace, layer: str) -> None:
         p for p in set(before) | set(after) if p.startswith("models/") and before.get(p) != after.get(p)
     )
     assert written == [], f"{layer} generate wrote while refusing: {written}"
+    return step
 
 
 def accepted(ws: Workspace, layer: str) -> None:
@@ -114,6 +114,20 @@ def test_conform_refuses_logic_reaching_a_column_by_position_or_quoted_name(ws, 
     quoted identifier (``"value"`` names a column, not the property's own value) is refused."""
     edit(ws, CONTRACT_PATH, lambda c: _property(c, "product_line").update(transformLogic=logic))
     refused(ws, "conform")
+
+
+def test_conform_refuses_contract_whose_file_is_not_its_resource(ws):
+    """D9: a contract's file names the resource it reads (contracts/<source>/<resource>.yaml reads
+    <source>__<resource>). The products contract copied unchanged to items.yaml still reads
+    adventure_works__products, and is refused, naming the file."""
+    copied = ws.root / "contracts" / "adventure_works" / "items.yaml"
+    copied.write_text((ws.root / CONTRACT_PATH).read_text())
+    try:
+        step = refused(ws, "conform")
+        assert "items.yaml" in step.output, step.output[-3000:]
+    finally:
+        copied.unlink()
+
 
 GENERATED_CONFORM = f"models/conform/adventure_works/{CONTRACT}.sql"
 SQL_LITERAL = re.compile(r"'(?:[^']|'')*'")
