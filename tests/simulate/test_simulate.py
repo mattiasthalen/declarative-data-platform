@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import socket
@@ -450,9 +451,19 @@ def test_seed_printed_and_replayable(monkeypatch, capsys, tmp_path):
 
 def test_cli_surface():
     """AC9: `task --list` names a simulate task; `uv run simulate --help` names --seed and --loads."""
-    listed = subprocess.run(["uv", "run", "task", "--list"], cwd=REPO, capture_output=True, text=True, timeout=300)
+    # go-task colours its listing under FORCE_COLOR, as in GitHub Actions;
+    # NO_COLOR asks it not to, and stripping ANSI escapes covers a go-task that colours anyway.
+    listed = subprocess.run(
+        ["uv", "run", "task", "--list"],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        env={**os.environ, "NO_COLOR": "1"},
+    )
     assert listed.returncode == 0, listed.stdout + listed.stderr
-    assert re.search(r"^\*\s+simulate:", listed.stdout, re.MULTILINE), listed.stdout
+    listing = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", listed.stdout)
+    assert re.search(r"^\*\s+simulate:", listing, re.MULTILINE), listed.stdout
     helped = subprocess.run(
         ["uv", "run", "simulate", "--help"], cwd=REPO, capture_output=True, text=True, timeout=300
     )
