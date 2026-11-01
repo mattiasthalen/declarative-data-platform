@@ -20,8 +20,10 @@ from prefect.deployments import run_deployment
 from prefect.states import Completed, Failed, State
 
 LIST_COMMAND = ["uv", "run", "task", "ingest:list"]
-INGEST_COMMAND = ["uv", "run", "task", "ingest:source", "--"]
-BUILD_COMMAND = ["uv", "run", "task", "build"]
+# `-x` passes the command's own exit status through; without it go-task reports every
+# failure as 201, and a partial landing (1) could not be told from none (2).
+INGEST_COMMAND = ["uv", "run", "task", "-x", "ingest:source", "--"]
+BUILD_COMMAND = ["uv", "run", "task", "-x", "build"]
 INGEST_TIMEOUT_SECONDS = 20 * 60
 BUILD_TIMEOUT_SECONDS = 30 * 60
 
