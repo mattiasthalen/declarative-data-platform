@@ -1,0 +1,45 @@
+# What runs and when (ADR-0017). The infra brings the server, the work pool and its workers;
+# deploy from the repo root:
+#
+#   ORCHESTRATE_WORK_POOL=<pool> uv run prefect --no-prompt deploy --all --prefect-file orchestrate/prefect.yaml
+#
+# `{{ $VAR }}` is read from the deploying shell's environment when it deploys.
+name: declarative-data-platform
+
+build: null
+push: null
+
+# Flow runs start in the repo the deployments were deployed from (A7).
+pull:
+  - prefect.deployments.steps.set_working_directory:
+      directory: "{{ $PWD }}"
+
+deployments:
+  - name: run
+    entrypoint: orchestrate/flows.py:run
+    description: Every source ingested in its own run, then one build of prod.
+    schedules:
+      - cron: "0 * * * *"
+        timezone: UTC
+        active: true
+    # A run still going when the hour strikes makes the new one cancel (A4).
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    work_pool:
+      name: "{{ $ORCHESTRATE_WORK_POOL }}"
+
+  - name: ingest-source
+    entrypoint: orchestrate/flows.py:ingest_source
+    description: Land one source, each resource its own dlt pipeline.
+    work_pool:
+      name: "{{ $ORCHESTRATE_WORK_POOL }}"
+
+  - name: build
+    entrypoint: orchestrate/flows.py:build
+    description: Build one target; one at a time, since DuckDB admits one writer.
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+    work_pool:
+      name: "{{ $ORCHESTRATE_WORK_POOL }}"
