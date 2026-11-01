@@ -72,40 +72,60 @@ class Drift:
     generated: str | None = None
 
 
-def _marker(family: str, name: str, side: str) -> re.Pattern:
-    """An HTML comment naming ``<family>:<name> <side>``; the rest of the comment is the author's."""
-    inside = r"(?:(?!-->).)*?"
-    return re.compile(rf"<!--{inside}\b{re.escape(family)}:{name}\s+{side}\b{inside}-->", re.DOTALL)
+def _comments(text: str):
+    """Each closed HTML comment in ``text``: its start, its end, and its body.
+
+    Scans with ``str.find`` so an unclosed ``<!--`` costs one pass, not a backtracking regex.
+    """
+    at = 0
+    while (start := text.find("<!--", at)) != -1:
+        close = text.find("-->", start + 4)
+        if close == -1:
+            return
+        yield start, close + 3, text[start + 4 : close]
+        at = close + 3
+
+
+def _markers(text: str, region: str, side: str) -> list[tuple[int, int]]:
+    """Where the comments naming ``<region> <side>`` sit; the rest of a comment is the author's."""
+    named = re.compile(rf"(?<![\w:-]){re.escape(region)}\s+{side}\b")
+    return [(start, end) for start, end, body in _comments(text) if named.search(body)]
 
 
 def _spliced(root: Path, file: Path, regions: dict[str, str]) -> tuple[bytes, str]:
     """``file`` as committed, and as it reads with each region's text between its markers.
 
-    A region is named ``<family>:<name>``. Raises Refused for a missing file or a broken region:
-    a marker missing or repeated, an end before its begin, or a marker of the same family inside.
+    A region is named ``<family>:<name>``, ``erd:conform`` say. Raises Refused for a file that is
+    missing, a symbolic link or not UTF-8, and for a broken region: a marker missing or repeated,
+    an end before its begin, or a marker of another region of the same family inside it.
     """
     path = root / file
+    if path.is_symlink():
+        raise Refused(f"{file.as_posix()}: is a symbolic link; a generator writes only inside the repo")
     if not path.is_file():
         raise Refused(f"{file.as_posix()}: missing")
     committed = path.read_bytes()
-    text = committed.decode("utf-8")
+    try:
+        text = committed.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise Refused(f"{file.as_posix()}: not UTF-8 ({error.reason} at byte {error.start})") from error
     for region, generated in regions.items():
-        family, name = region.split(":", 1)
+        family = region.split(":", 1)[0]
         found = {}
         for side in ("begin", "end"):
-            matches = list(_marker(family, re.escape(name), side).finditer(text))
+            matches = _markers(text, region, side)
             if len(matches) != 1:
                 problem = "missing" if not matches else f"appears {len(matches)} times"
                 raise Refused(f"{file.as_posix()}: {region} {side} {problem}")
             found[side] = matches[0]
-        begin, end = found["begin"], found["end"]
-        if end.start() < begin.end():
+        (_, opened), (closed, _) = found["begin"], found["end"]
+        if closed < opened:
             raise Refused(f"{file.as_posix()}: {region} ends before it begins")
-        held = text[begin.end() : end.start()]
-        for side in ("begin", "end"):
-            if foreign := _marker(family, r"[\w-]+", side).search(held):
-                raise Refused(f"{file.as_posix()}: {region} holds another marker, {foreign.group(0)}")
-        text = text[: begin.end()] + generated + text[end.start() :]
+        foreign = re.compile(rf"(?<![\w:-]){re.escape(family)}:[\w-]+\s+(?:begin|end)\b")
+        for _, _, body in _comments(text[opened:closed]):
+            if other := foreign.search(body):
+                raise Refused(f"{file.as_posix()}: {region} holds another region's marker, {other.group(0)}")
+        text = text[:opened] + generated + text[closed:]
     return committed, text
 
 
