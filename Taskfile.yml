@@ -29,6 +29,16 @@ tasks:
     cmds:
       - uv run ingest
 
+  ingest:list:
+    desc: Print each declared source's name, one per line
+    cmds:
+      - uv run ingest --list
+
+  ingest:source:
+    desc: Land one source's resources (task ingest:source -- SOURCE); exits 0 all landed, 1 some, 2 none
+    cmds:
+      - uv run ingest {{.CLI_ARGS}}
+
   build:
     desc: Build every layer into the target's DuckDB file (TARGET=dev by default)
     cmds:
