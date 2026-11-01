@@ -9,7 +9,7 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A1 | A full pull of Products is small enough to repeat every run. | ingest | A Products load takes more than a minute or the lake grows past a few hundred MB. |
 | A2 | `ModifiedDate` moves whenever a Product value changes in the source. | integrate | A load holds a different value for a product with an unchanged `ModifiedDate` more often than rarely: corrections pile up in the annexes. |
 | A3 | dlt's load id is fractional epoch seconds as text, increasing with time. | conform | `try_cast` of `_dlt_load_id` to a number fails, or a later load has a smaller id. |
-| A4 | Only one `dbt build` runs against a target at a time, and none runs while ingest is landing a load. | operations | The orchestrator (story 16) schedules overlapping runs, or a staged load has fewer rows than its files in the lake. |
+| A4 | Only one `dbt build` runs against a target at a time, and none runs while ingest is landing a load. Scheduled runs are held to it by the `run` and `build` concurrency limits in `orchestrate/prefect.yaml` (ADR-0024); hand-run builds are not. | operations | A hand-run build overlaps a scheduled one, or a staged load has fewer rows than its files in the lake. |
 | A5 | The generated load writes each posit and annex key once; nothing in DuckDB enforces it, since no model declares a contract or constraint. | integrate | `IntegrityViolations` reports a duplicate key and its `empty` test fails the build. |
 | A6 | Source dates and timestamps carry no timezone offset. `try_cast` to timestamp drops an offset without converting. | conform | A contract's source serves a value with `Z` or `+hh:mm`. |
 | A7 | CI needs no network beyond GitHub and the Python package index; nothing in `pytest` or `task check` calls the live source. | ci | A CI run fails on a connection error to a source host, or a test needs `demodata.grapecity.com`. |
@@ -23,6 +23,8 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A15 | dlt keeps a resource's incremental step where it is when ingest adds the JSON wrap after it with `add_map(..., insert_at=len(resource._pipe))`; `_pipe` is private to dlt. | ingest | After a dlt upgrade the wrap runs before the incremental, which finds no cursor: AC8 and AC9 fail with `IncrementalCursorPathMissing`. |
 | A16 | Ingest and its tasks run from the repo root: `sources/` and the default `lake/` are read relative to the working directory. | ingest | Run elsewhere, ingest finds no source and exits 2, or lands in another folder's lake. |
 | A17 | The feed's page order holds between the requests of one load: its next link pages by `$skip` with no `$orderby`. | ingest | A row that moves between pages mid-load lands twice or not at all in that load. |
+| A18 | A flow run started from a deployment runs on its work pool with the deploying repo's root as working directory, and reaches the lake and the DuckDB file from there. | orchestrate | An `ingest-source` or `build` run on the infra's work pool fails on a missing file, or builds an empty lake. |
+| A19 | Prefect resolves alongside dbt-core and dlt in one lock. | orchestrate | `uv lock` fails, or pins dbt-core or dlt outside their ranges in `pyproject.toml`. |
 
 ## Measured (2026-10-30, the AdventureWorks OData feed)
 

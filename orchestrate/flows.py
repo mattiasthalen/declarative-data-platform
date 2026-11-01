@@ -1,8 +1,8 @@
-"""The scheduled run, as Prefect flows that only call Taskfile tasks (ADR-0013).
+"""The scheduled run, as Prefect flows that only call Taskfile tasks (ADR-0020).
 
 `run` lists the sources, starts one `ingest-source` flow run per source (its own process or
-pod on the work pool, ADR-0014), waits for all of them, then starts one `build` flow run if
-any source landed something, and ends Failed when anything did not land (ADR-0015).
+pod on the work pool, ADR-0021), waits for all of them, then starts one `build` flow run if
+any source landed something, and ends Failed when anything did not land (ADR-0022).
 `orchestrate/prefect.yaml` declares the deployments, the schedule and the concurrency limits.
 """
 
@@ -27,7 +27,7 @@ BUILD_COMMAND = ["uv", "run", "task", "-x", "build"]
 INGEST_TIMEOUT_SECONDS = 20 * 60
 BUILD_TIMEOUT_SECONDS = 30 * 60
 
-# Ingest's exit statuses, agreed with story #17: 0 every resource landed, 1 some did, 2 none.
+# Ingest's exit statuses (ADR-0018): 0 every resource landed, 1 some did, 2 none.
 LANDED_ALL, LANDED_SOME = 0, 1
 # The name an `ingest-source` run's Failed state carries when some resources landed, which is
 # how `run` tells a partial landing from none at all.

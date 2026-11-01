@@ -23,3 +23,9 @@ Nygard's format: Context, Decision, Consequences, with a Status. One decision pe
 | [0017](0017-give-each-source-a-folder-with-one-file-per-resource.md) | Give each source a folder in `sources/` and `contracts/`, one file per resource | Accepted (2026-10-31) |
 | [0018](0018-run-ingest-per-source-and-report-through-exit-codes.md) | Run ingest per source, and report through exit codes 0, 1 and 2 | Accepted (2026-10-31) |
 | [0019](0019-fetch-incremental-resources-from-their-cursor-inclusive.md) | Fetch incremental resources from their last cursor value inclusive | Accepted (2026-10-31) |
+| [0020](0020-expose-the-platform-to-orchestrators-as-taskfile-tasks.md) | Expose the platform to orchestrators as Taskfile tasks, one per unit of work | Accepted (2026-11-01) |
+| [0021](0021-ingest-each-source-in-its-own-run-then-build-once.md) | Ingest each source in its own flow run, then build once | Accepted (2026-11-01) |
+| [0022](0022-build-when-any-source-landed-and-fail-the-run-when-any-failed.md) | Build when any source landed, and fail the scheduled run when any source failed | Accepted (2026-11-01) |
+| [0023](0023-orchestrate-with-prefect.md) | Orchestrate with Prefect | Accepted (2026-11-01) |
+| [0024](0024-declare-what-runs-and-when-in-this-repo.md) | Declare what runs and when in this repo; the infra owns only infrastructure | Accepted (2026-11-01) |
+| [0025](0025-keep-one-uv-project-with-orchestrate-as-a-dependency-group.md) | Keep one uv project, with orchestrate as a dependency group | Accepted (2026-11-01) |

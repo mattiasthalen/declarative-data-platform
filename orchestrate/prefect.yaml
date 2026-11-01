@@ -1,4 +1,4 @@
-# What runs and when (ADR-0017). The infra brings the server, the work pool and its workers;
+# What runs and when (ADR-0024). The infra brings the server, the work pool and its workers;
 # deploy from the repo root:
 #
 #   ORCHESTRATE_WORK_POOL=<pool> uv run prefect --no-prompt deploy --all --prefect-file orchestrate/prefect.yaml
@@ -9,7 +9,7 @@ name: declarative-data-platform
 build: null
 push: null
 
-# Flow runs start in the repo the deployments were deployed from (A7).
+# Flow runs start in the repo the deployments were deployed from (A18).
 pull:
   - prefect.deployments.steps.set_working_directory:
       directory: "{{ $PWD }}"
