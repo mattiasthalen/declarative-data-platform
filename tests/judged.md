@@ -128,6 +128,7 @@ Pass when all of these hold:
    TransactionHistories row counts and date range).
 6. Nothing in the repo's docs still says resources are declared in Python or that
    contracts sit flat in `contracts/*.yaml`.
+
 # Judged checks for story #16
 
 Two acceptance criteria of the scheduled run are judged at review rather than run. The

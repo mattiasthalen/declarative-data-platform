@@ -14,8 +14,8 @@ import yaml
 from harness import REPO, tail
 
 LIST = ["uv", "run", "task", "ingest:list"]
-INGEST = ["uv", "run", "task", "ingest:source", "--"]
-BUILD = ["uv", "run", "task", "build"]
+INGEST = ["uv", "run", "task", "-x", "ingest:source", "--"]
+BUILD = ["uv", "run", "task", "-x", "build"]
 
 
 def default(deployment: dict, parameter: str):
