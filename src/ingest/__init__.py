@@ -18,7 +18,6 @@ import argparse
 import json
 import re
 import sys
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -55,47 +54,49 @@ class Refused(Exception):
 @dataclass
 class Source:
     name: str
-    kind: str = ""
     config: dict = field(default_factory=dict)
     resources: dict[str, dict] = field(default_factory=dict)
     problem: str | None = None
 
 
 def read_sources(root: Path = SOURCES) -> list[Source]:
-    """Every folder under ``root``, sorted, each read and checked; a bad one carries its problem."""
+    """Every source folder under ``root``, sorted, each read and checked; a bad one carries its
+    problem and no resources. A folder whose name starts with ``.`` or ``_`` is not a source."""
     if not root.is_dir():
         return []
     sources = []
-    for folder in sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")):
-        source = Source(folder.name)
+    for folder in sorted(p for p in root.iterdir() if p.is_dir() and p.name[0] not in "._"):
         try:
-            read_source(folder, source)
+            sources.append(read_source(folder))
         except Refused as error:
-            source.problem = str(error)
-        sources.append(source)
+            sources.append(Source(folder.name, problem=str(error)))
     return sources
 
 
-def read_source(folder: Path, source: Source) -> None:
-    if not NAME.fullmatch(source.name):
+def read_source(folder: Path) -> Source:
+    if not NAME.fullmatch(folder.name):
         raise Refused(f"{folder}: a source's name must be snake_case, with no double underscore")
-    files = sorted(folder.glob("*.yaml"))
-    resource_files = [p for p in files if p.name != SOURCE_FILE]
-    if not (folder / SOURCE_FILE).is_file():
-        raise Refused(f"{folder / SOURCE_FILE} is missing")
+    source_file = folder / SOURCE_FILE
+    resource_files = [p for p in sorted(folder.glob("*.yaml")) if p.name != SOURCE_FILE]
+    if not source_file.is_file():
+        raise Refused(f"{source_file} is missing")
     if not resource_files:
-        raise Refused(f"{folder / SOURCE_FILE} has no resource file beside it")
+        raise Refused(f"{source_file} has no resource file beside it")
 
-    declared = load_yaml(folder / SOURCE_FILE)
+    declared = load_yaml(source_file)
     if not isinstance(declared, dict) or len(declared) != 1:
-        raise Refused(f"{folder / SOURCE_FILE} must hold exactly one dlt source kind, such as rest_api:")
-    [(source.kind, source.config)] = declared.items()
-    if source.kind not in KINDS:
-        raise Refused(f"{folder / SOURCE_FILE}: unknown dlt source kind {source.kind!r}; known: {', '.join(KINDS)}")
-    if not isinstance(source.config, dict):
-        raise Refused(f"{folder / SOURCE_FILE}: {source.kind} must hold a mapping")
-    KINDS[source.kind].check_source(folder / SOURCE_FILE, source.config)
+        raise Refused(f"{source_file} must hold exactly one dlt source kind, such as {KIND}:")
+    [(kind, config)] = declared.items()
+    if kind != KIND:
+        raise Refused(f"{source_file}: unknown dlt source kind {kind!r}; known: {KIND}")
+    if not isinstance(config, dict):
+        raise Refused(f"{source_file}: {kind} must hold a mapping")
+    if "resources" in config:
+        raise Refused(f"{source_file}: resources are declared one per file beside it, not here")
+    check(source_file, config, {"name": "_check", "endpoint": {"path": ""}})
 
+    source = Source(folder.name, config)
+    defaults = config.get("resource_defaults") or {}
     for path in resource_files:
         name = path.stem
         if not NAME.fullmatch(name):
@@ -105,16 +106,16 @@ def read_source(folder: Path, source: Source) -> None:
             raise Refused(f"{path} must hold a mapping")
         if entry.get("name", name) != name:
             raise Refused(f"{path}: name {entry['name']!r} differs from the file name {name!r}")
-        defaults = source.config.get("resource_defaults") or {}
         disposition = {**defaults, **entry}.get("write_disposition", "append")
         if isinstance(disposition, dict):
             disposition = disposition.get("disposition")
         if disposition != "append":
-            where = path if "write_disposition" in entry else folder / SOURCE_FILE
+            where = path if "write_disposition" in entry else source_file
             raise Refused(f"{where}: write_disposition {disposition!r} refused; every load is appended")
         entry = {**entry, "name": name}
-        KINDS[source.kind].check_resource(path, source.config, entry)
+        check(path, config, entry)
         source.resources[name] = entry
+    return source
 
 
 def load_yaml(path: Path) -> Any:
@@ -124,7 +125,36 @@ def load_yaml(path: Path) -> Any:
         raise Refused(f"{path} is not valid YAML: {error}") from None
 
 
+def check(path: Path, config: dict, entry: dict) -> None:
+    """Refuse, naming ``path``, a declaration dlt would not build."""
+    try:
+        build(config, entry)
+    except Exception as error:
+        raise Refused(f"{path}: {without_values(error)}") from None
+
+
+def without_values(error: Exception) -> str:
+    """dlt's validation message, cut to its most specific complaint. dlt quotes every enclosing
+    value whole, which would print a declared header, a token included, to the pod's log."""
+    from dlt.common.exceptions import DictValidationException
+
+    if not isinstance(error, DictValidationException):
+        return str(error)
+
+    def leaves(e: DictValidationException):
+        if not e.nested_exceptions:
+            yield e
+        for nested in e.nested_exceptions or []:
+            yield from leaves(nested)
+
+    deepest = max(leaves(error), key=lambda e: e.path.count("/"))
+    if isinstance(deepest.value, (dict, list)):
+        return f"Path `{deepest.path}`: field `{deepest.field}` is not valid"
+    return str(deepest)
+
+
 # --------------------------------------------------------------------------- rest_api
+
 
 
 def origin(url: str) -> tuple[str, str, int | None]:
@@ -178,51 +208,24 @@ def guarded_session(base_url: str):
     return session
 
 
-class RestApi:
-    """The ``rest_api`` kind: ``_source.yaml`` holds dlt's RESTAPIConfig less ``resources``; each
-    resource file is one entry of ``resources``."""
-
-    registered = False
-
-    @classmethod
-    def register(cls) -> None:
-        if not cls.registered:
-            from dlt.sources.rest_api.config_setup import register_paginator
-
-            register_paginator("odata", odata_paginator())
-            cls.registered = True
-
-    @classmethod
-    def build(cls, config: dict, entry: dict):
-        """The one dlt resource ``entry`` declares; nothing is requested until it is iterated."""
-        from dlt.sources.rest_api import rest_api_resources
-
-        cls.register()
-        client = config.get("client") or {}
-        if not isinstance(client, dict) or not isinstance(client.get("base_url"), str):
-            raise ValueError("client.base_url is required")
-        client = {**client, "session": guarded_session(client["base_url"])}
-        [resource] = rest_api_resources({**config, "client": client, "resources": [entry]})
-        return resource
-
-    @classmethod
-    def check_source(cls, path: Path, config: dict) -> None:
-        if "resources" in config:
-            raise Refused(f"{path}: resources are declared one per file beside it, not here")
-        try:
-            cls.build(config, {"name": "_check", "endpoint": {"path": ""}})
-        except Exception as error:
-            raise Refused(f"{path}: {error}") from None
-
-    @classmethod
-    def check_resource(cls, path: Path, config: dict, entry: dict) -> None:
-        try:
-            cls.build(config, entry)
-        except Exception as error:
-            raise Refused(f"{path}: {error}") from None
+KIND = "rest_api"
 
 
-KINDS: dict[str, type[RestApi]] = {"rest_api": RestApi}
+def build(config: dict, entry: dict):
+    """The one dlt resource ``entry`` declares under ``config``, dlt's RESTAPIConfig less
+    ``resources``; nothing is requested until it is iterated. A resource that names a parent
+    resource cannot be built alone, so is refused."""
+    from dlt.sources.rest_api import rest_api_resources
+    from dlt.sources.rest_api.config_setup import PAGINATOR_MAP, register_paginator
+
+    if "odata" not in PAGINATOR_MAP:
+        register_paginator("odata", odata_paginator())
+    client = config.get("client") or {}
+    if not isinstance(client, dict) or not isinstance(client.get("base_url"), str):
+        raise ValueError("client.base_url is required")
+    client = {**client, "session": guarded_session(client["base_url"])}
+    [resource] = rest_api_resources({**config, "client": client, "resources": [entry]})
+    return resource
 
 
 # --------------------------------------------------------------------------- landing
@@ -236,7 +239,7 @@ def land(source: Source, resource_name: str) -> None:
     """Run the one pipeline that lands ``resource_name`` of ``source`` as one load."""
     import dlt
 
-    resource = KINDS[source.kind].build(source.config, source.resources[resource_name])
+    resource = build(source.config, source.resources[resource_name])
     # Placed after every step dlt put there, its incremental included, so the cursor is read from
     # the row as served. add_map without a position would go before the incremental, which dlt
     # keeps last.
@@ -245,11 +248,15 @@ def land(source: Source, resource_name: str) -> None:
     destination = dlt.destinations.filesystem(bucket_url=lake_root().as_uri(), layout=LAYOUT)
     pipeline_name = f"{source.name}__{resource_name}"
     pipeline = dlt.pipeline(pipeline_name=pipeline_name, destination=destination, dataset_name=DATASET)
+    # The lake holds the cursor (ADR-0016). Local state left by an earlier run would win over a
+    # lake that lost its own, so the pipeline starts from what the lake holds and nothing else.
+    pipeline = pipeline.drop()
     pipeline.run(resource, table_name=pipeline_name, loader_file_format="parquet")
 
 
-def run(sources: list[Source], only: Callable[[Source, str], bool] = lambda source, name: True) -> int:
-    """Land every chosen resource of ``sources``; name each failure on stderr; return the exit status."""
+def run(sources: list[Source], resource: str | None = None) -> int:
+    """Land every resource of ``sources``, or only the one named ``resource``; name each failure on
+    stderr; return the exit status."""
     landed = failed = 0
     for source in sources:
         if source.problem:
@@ -257,7 +264,7 @@ def run(sources: list[Source], only: Callable[[Source, str], bool] = lambda sour
             print(f"{source.name} not run: {source.problem}", file=sys.stderr)
             continue
         for name in source.resources:
-            if not only(source, name):
+            if resource is not None and name != resource:
                 continue
             try:
                 land(source, name)
@@ -292,14 +299,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.name is None:
         return run(sources)
 
-    source_name, _, resource_name = args.name.partition("__")
+    source_name, separator, resource_name = args.name.partition("__")
     chosen = [s for s in sources if s.name == source_name]
     if not chosen:
         print(f"no source named {source_name!r} is declared", file=sys.stderr)
         return 2
-    if resource_name:
-        if not chosen[0].problem and resource_name not in chosen[0].resources:
-            print(f"source {source_name!r} declares no resource {resource_name!r}", file=sys.stderr)
-            return 2
-        return run(chosen, lambda source, name: name == resource_name)
-    return run(chosen)
+    if not separator:
+        return run(chosen)
+    if not chosen[0].problem and resource_name not in chosen[0].resources:
+        print(f"source {source_name!r} declares no resource {resource_name!r}", file=sys.stderr)
+        return 2
+    return run(chosen, resource_name)

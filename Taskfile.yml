@@ -36,6 +36,9 @@ tasks:
 
   ingest:source:
     desc: Land one source's resources (task ingest:source -- SOURCE); exits 0 all landed, 1 some, 2 none
+    preconditions:
+      - sh: test -n "{{.CLI_ARGS}}"
+        msg: "name the source: task ingest:source -- SOURCE"
     cmds:
       - uv run ingest {{.CLI_ARGS}}
 

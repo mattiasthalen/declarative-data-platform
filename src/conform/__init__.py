@@ -220,6 +220,8 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
         obj = contract["schema"][0]
         name = obj["name"]
         resource = obj.get("physicalName") or name
+        if resource != f"{domain}__{path.stem}":
+            raise ContractError(f"{path}: reads {resource!r}, not its file's resource {domain}__{path.stem}")
         properties = obj.get("properties") or []
         raw = f"raw__{name}"
         out.setdefault(Path("models") / "raw" / domain, {})[f"{raw}.sql"] = raw_model(name, resource)

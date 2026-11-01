@@ -2,11 +2,11 @@
 #   "What is the total quantity of units sold per calendar month and product line?"
 #   Aggregation: sum. Measure: Quantity.
 #   Dimensions: calendar month, product line.
-#   Time: every month the source holds (2013-07 to 2014-08 when measured).
+#   Time: every month the source holds (2013-07..2014-08).
 #   Definitions:
-#     sold: a transaction of type S, a sales order line. Work orders (W) and purchases (P) are not sales.
-#     calendar month: the month of TransactionDate, the business date, not ModifiedDate or when it was extracted.
-#     product line: the product's line as of the transaction date, the trimmed code, empty as its own group.
+#     sold: TransactionType S (74,575 rows; W work orders and P purchases are not sales).
+#     calendar month: month of TransactionDate (business date, not ModifiedDate or extraction).
+#     product line: the product's line as of the transaction date, trimmed code, empty its own group.
 #
 # Fetched incrementally from the last ModifiedDate seen, inclusive (ADR-0016).
 endpoint:

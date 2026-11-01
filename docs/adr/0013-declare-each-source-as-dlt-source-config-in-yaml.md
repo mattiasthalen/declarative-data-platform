@@ -16,4 +16,4 @@ Rejected: a schema of our own (base URL, entity set, load kind) translated into 
 
 ## Consequences
 
-dlt's documentation is the reference for what a declaration may say. The OData `$filter` of an incremental resource is visible in its declaration. Each new kind of source, and each registered name, is code; adding an object to a known source is a file.
+dlt's documentation is the reference for what a declaration may say. The OData `$filter` of an incremental resource is visible in its declaration. Each new kind of source, and each registered name, is code; adding an object to a known source is a file. Each resource file is built alone, so a dlt resource that reads its parent's rows (`{resources.<parent>.<field>}`) cannot be declared; it is refused until a story needs one.
