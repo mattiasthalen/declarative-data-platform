@@ -343,6 +343,18 @@ def test_exit_status_two_for_unknown_resource_of_known_source(feed, work, lake, 
     assert landed(lake) == {}
 
 
+def test_exit_status_two_for_empty_resource_after_separator(feed, work, lake, capsys):
+    """EC7, AC13: ``SOURCE__`` names no resource: exit 2, the source named on stderr, nothing requested
+    and nothing landed (it is not taken for the whole source)."""
+    feed.pages["/Items"] = (200, {"value": [product(1, "ER-0001", "One")]})
+    declare(work, "shop", f"{feed.base}/", {"items": entry("Items")})
+
+    assert ingest("shop__") == 2
+    assert "shop" in stderr(capsys)
+    assert feed.requested == []
+    assert landed(lake) == {}
+
+
 def _closed_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -792,6 +804,49 @@ def test_ignores_other_files(feed, work, lake):
     assert set(landed(lake)) == {"shop__items"}
 
 
+SECRET = "s3cret-token"
+
+
+def test_refusal_does_not_echo_declared_values(feed, work, lake, capsys):
+    """AC14, X3: a resource refused for an unknown endpoint key fails its source naming the file, but
+    no declared value (a header's token) is printed: a valid source still lands (exit 1)."""
+    _good_source(work, feed)
+    _served(feed, "Fine", "Other")
+    secret = entry("Other", headers={"Authorization": f"Bearer {SECRET}"}, nonsense=1)
+    declare(work, "bad", f"{feed.base}/", {"fine": entry("Fine"), "other": secret})
+
+    code = ingest()
+
+    out = capsys.readouterr()
+    assert code == 1, out.err
+    assert "other.yaml" in out.err
+    assert SECRET not in out.out and SECRET not in out.err, out.err
+    assert set(landed(lake)) == {"good__items"}
+    assert all(urlsplit(p).path != "/Other" for p in feed.requested)
+
+
+@pytest.mark.parametrize("folder", ["_template", "__pycache__"])
+def test_underscore_folder_is_not_a_source(feed, work, lake, capsys, folder):
+    """A7: a folder under sources/ whose name starts with ``_`` (a template, ``__pycache__``) is not a
+    source, whatever it holds: a valid source beside it lands, exit 0, and --list does not print it."""
+    _good_source(work, feed)
+    junk = work / "sources" / folder
+    junk.mkdir()
+    (junk / "_source.yaml").write_text("endpoint: [broken\n")
+    (junk / "Not-A-Resource.yaml").write_text("nonsense: 1\n")
+    (junk / "ingest.cpython-312.pyc").write_bytes(b"\x00\x01junk")
+
+    code = ingest()
+
+    said = stderr(capsys)
+    assert code == 0, said
+    assert folder not in said
+    assert set(landed(lake)) == {"good__items"}
+
+    assert ingest("--list") == 0
+    assert capsys.readouterr().out.splitlines() == ["good"]
+
+
 # --------------------------------------------------------------------------- AC10, AC11, AC12, EC2: the CLI
 
 
@@ -958,6 +1013,42 @@ def test_incremental_resumes_from_lake_state(feed, work, lake, tmp_path, monkeyp
     _assert_second_load_beside_first(lake, first)
 
 
+@pytest.mark.parametrize("lake_after", ["deleted", "restored_from_backup"])
+def test_incremental_lake_wins_over_local_state(feed, work, lake, tmp_path, lake_after):
+    """AC9, A3: the lake holds the cursor, not the local dlt data folder, which is kept throughout.
+
+    deleted: after the first run the lake is deleted whole; the next run asks from the declared
+    initial value again and lands every row again.
+    restored_from_backup: the lake is backed up after the first run, a second run advances the
+    cursor, then the backup is put back; the next run asks from the first run's cursor, which is
+    what the lake holds, not from the second's, which only the local folder remembers.
+    """
+    histories, _ = _first_run(feed, work, lake)
+    assert histories.asked_from(0) == _moment(INITIAL)
+    if lake_after == "deleted":
+        shutil.rmtree(lake)
+        expected, ids = INITIAL, {1, 2, 3}
+    else:
+        backup = tmp_path / "lake-backup"
+        shutil.copytree(lake, backup)
+        histories.rows.append(_transaction(4, "2014-08-02T00:00:00"))
+        assert ingest() == 0
+        assert histories.asked_from(len(histories.filters) - 1) == _moment("2014-08-01T00:00:00")
+        shutil.rmtree(lake)
+        shutil.copytree(backup, lake)
+        # The first load's rows, and row 4 again (row 2, at the cursor, may come again or not).
+        expected, ids = "2014-08-01T00:00:00", {1, 2, 3, 4}
+
+    asked = len(histories.filters)
+    assert ingest() == 0
+
+    assert len(histories.filters) > asked, "the run asked nothing"
+    assert histories.asked_from(asked) == _moment(expected)
+    files = landed(lake)
+    assert set(files) == {RESOURCE}
+    assert {r[2]["TransactionId"] for r in rows(files[RESOURCE])} == ids
+
+
 def test_incremental_no_new_rows_lands_nothing(feed, work, lake):
     """AC17: an incremental run whose feed has no new rows exits 0 and lands no new file."""
     histories, first = _first_run(feed, work, lake)
@@ -985,3 +1076,13 @@ def test_taskfile_ingest_tasks_call_the_cli():
     assert cmds("ingest:list") == ["uv run ingest --list"]
     source = cmds("ingest:source")
     assert len(source) == 1 and re.fullmatch(r"uv run ingest \{\{ ?\.CLI_ARGS ?\}\}", source[0]), source
+
+
+def test_taskfile_ingest_source_requires_a_name():
+    """AC16, A6: ``task ingest:source`` with no name must not run every source: the task refuses to
+    run unless CLI_ARGS is set."""
+    task = yaml.safe_load((REPO / "Taskfile.yml").read_text())["tasks"]["ingest:source"]
+    checks = [p["sh"] if isinstance(p, dict) else p for p in task.get("preconditions", [])]
+    assert any(
+        re.search(r"test\s+-n\s+[\"']?\{\{ ?\.CLI_ARGS ?\}\}", c) for c in checks
+    ), f"ingest:source has no precondition on CLI_ARGS: {checks}"
