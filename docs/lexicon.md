@@ -6,7 +6,7 @@ The words someone needs defined to talk about using or developing the platform. 
 
 **resource** — One object a *source* serves, such as its products, landed by its own pipeline into its own lake folder and named `<source>__<resource>`. Distinct from dlt's resource, the code that yields rows. See [ADR-0018](adr/0018-run-ingest-per-source-and-report-through-exit-codes.md).
 
-**declaration** — A file a person writes to say what the platform holds and runs: a *source* and its resources in `sources/`, its contracts in `contracts/`, the Anchor model and its mappings in `anchor/`, and the flows and their schedule in `orchestrate/`. Distinct from generated output, which generators write from the declarations and nobody edits by hand, and from a declaration in code. See [ADR-0012](adr/0012-lay-the-repo-out-by-kind-with-generator-owned-folders.md).
+**declaration** — A file a person writes to say what the platform holds and runs: a *source* and its resources in `sources/`, its contracts in `contracts/`, the Anchor model and its mappings in `anchor/`, and what runs when in `orchestrate/prefect.yaml`. Distinct from generated output, which generators write from the declarations and nobody edits by hand, and from a declaration in code. See [ADR-0012](adr/0012-lay-the-repo-out-by-kind-with-generator-owned-folders.md).
 
 **scheduled run** — One firing of the schedule: every *source* ingested in its own flow run, then one build of the target. Distinct from a *batch*, the Anchor-writing `dbt build` it may contain. See [ADR-0021](adr/0021-ingest-each-source-in-its-own-run-then-build-once.md).
 

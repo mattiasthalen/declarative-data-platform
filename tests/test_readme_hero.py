@@ -194,8 +194,8 @@ def styles(root: ET.Element) -> str:
 def test_hero_svg_fetches_nothing():
     """AC4, EC5: every href and url(...) is a #fragment or a data: URI, and so is every value a
     <set> or <animate> gives an href; no @import, no <?xml-stylesheet?>, no backslash escape in CSS
-    (which could spell url); no <script>, <foreignObject>, <image> or on* attribute. The failure
-    names the offending reference."""
+    or in any attribute but d (which could spell url); no <script>, <foreignObject>, <image> or on*
+    attribute. The failure names the offending reference."""
     root = hero()
     offending: list[str] = []
     # ElementTree drops processing instructions, so the raw text is searched for this one.
@@ -207,13 +207,15 @@ def test_hero_svg_fetches_nothing():
             offending.append(f"<{tag}> element")
         if tag in ANIMATIONS and local(el.get("attributeName", "").strip()).endswith("href"):
             for name in (name for name in ANIMATED_VALUES if name in el.attrib):
-                for value in el.get(name).split(";"):
+                # SMIL splits only `values` on ";"; a data: URI in `to` keeps its ";base64".
+                for value in el.get(name).split(";") if name == "values" else [el.get(name)]:
                     if not local_reference(value):
                         offending.append(f"<{tag}> {name}={value.strip()!r} for {el.get('attributeName')}")
-        if "\\" in el.get("style", ""):
-            offending.append(f"<{tag}> style with a CSS escape: {el.get('style')[:80]!r}")
         for name, value in el.attrib.items():
             attr = local(name)
+            # A presentation attribute is parsed as CSS, where an escape could spell url.
+            if attr != "d" and "\\" in value:
+                offending.append(f"<{tag}> {attr} with a CSS escape: {value[:80]!r}")
             if attr.lower().startswith("on"):
                 offending.append(f"<{tag}> event attribute {attr}={value!r}")
             if name in ("href", f"{{{XLINK}}}href") and not local_reference(value):
@@ -313,13 +315,13 @@ def own_value(el: ET.Element, prop: str, classes: dict[str, str]) -> str | None:
 
 
 WEIGHTS = {"normal": "400", "bold": "700"}
-NOT_DRAWN = {"title", "desc"}
+NOT_DRAWN = {"title", "desc", "metadata"}
 
 
 def text_runs(root: ET.Element) -> list[tuple[str, str | None, str | None]]:
     """(characters, the font-family that draws them, their font-weight) for every run of text in
-    a <text>, from every descendant but <title> and <desc>, with both inherited down from
-    ancestors and overridden by descendants."""
+    a <text>, from every descendant but <title>, <desc> and <metadata>, with both inherited down
+    from ancestors and overridden by descendants."""
     families = class_values(root, "font-family")
     weights = class_values(root, "font-weight")
     runs: list[tuple[str, str | None, str | None]] = []
