@@ -5,6 +5,7 @@ AC1 schedule, AC9 target, AC10 commands, AC11 one project, AC14 the Taskfile tas
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import tomllib
@@ -16,6 +17,7 @@ from harness import REPO, tail
 LIST = ["uv", "run", "task", "ingest:list"]
 INGEST = ["uv", "run", "task", "-x", "ingest:source", "--"]
 BUILD = ["uv", "run", "task", "-x", "build"]
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def default(deployment: dict, parameter: str):
@@ -111,11 +113,19 @@ def test_one_project():
 
 def test_tasks_listed():
     """AC14: `uv run task --list` shows the three orchestrate tasks."""
+    # go-task colours its listing when it sees CI=true, as on GitHub Actions. NO_COLOR
+    # turns that off; stripping the escapes covers a go-task that ignores it.
     listing = subprocess.run(
-        ["uv", "run", "task", "--list"], cwd=REPO, capture_output=True, text=True, timeout=300
+        ["uv", "run", "task", "--list"],
+        cwd=REPO,
+        env={**os.environ, "NO_COLOR": "1"},
+        capture_output=True,
+        text=True,
+        timeout=300,
     )
     assert listing.returncode == 0, tail(listing.stdout + listing.stderr)
+    shown = ANSI_ESCAPE.sub("", listing.stdout)
     for task in ("orchestrate:server", "orchestrate:worker", "orchestrate:deploy"):
-        assert re.search(rf"^\* {re.escape(task)}:", listing.stdout, re.M), (
-            f"`task --list` does not show {task}:\n{listing.stdout}"
+        assert re.search(rf"^\* {re.escape(task)}:", shown, re.M), (
+            f"`task --list` does not show {task}:\n{shown}"
         )
