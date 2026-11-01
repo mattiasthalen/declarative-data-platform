@@ -35,7 +35,7 @@ Products loads into the lake; it is not ingest, which names no resource (ADR-001
   `uv run task check` fails otherwise, naming the file, and CI requires it (ADR-0014).
 - **Never edit a generated folder by hand.** A folder under `models/` whose `README.md` a
   generator wrote is that generator's; change the declarations and regenerate (ADR-0012).
-  The same holds between the `erd:<layer>` markers in the root README (ADR-0027).
+  The same holds between the `erd:<layer>` markers in the root README (ADR-0028).
 - **`__` separates concerns in every name**: schemas (`serve__uss`), models
   (`adventure_works__products`), columns (`_dlt__load_id`).
 - **One `dbt build` per target at a time.** DuckDB's file lock refuses a second. Scheduled

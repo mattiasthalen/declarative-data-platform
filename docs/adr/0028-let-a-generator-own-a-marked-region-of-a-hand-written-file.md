@@ -1,4 +1,4 @@
-# ADR-0027 — Let a generator own a marked region of a hand-written file
+# ADR-0028 — Let a generator own a marked region of a hand-written file
 
 **Status:** Accepted (2026-11-01)
 

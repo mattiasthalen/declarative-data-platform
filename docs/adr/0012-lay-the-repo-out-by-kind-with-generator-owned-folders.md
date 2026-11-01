@@ -22,4 +22,4 @@ Ingest declarations live in a top-level `sources/`, and `sources/` and `contract
 
 ## Addendum 2026-11-01
 
-A generator can also own a marked region of a hand-written file, such as each layer's diagram in the root README; it rewrites only the text between the region's markers ([ADR-0027](0027-let-a-generator-own-a-marked-region-of-a-hand-written-file.md)).
+A generator can also own a marked region of a hand-written file, such as each layer's diagram in the root README; it rewrites only the text between the region's markers ([ADR-0028](0028-let-a-generator-own-a-marked-region-of-a-hand-written-file.md)).
