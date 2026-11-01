@@ -89,11 +89,14 @@ def write_load(lake: Path, load_id: str, rows: list[dict], ids: list[str]) -> Pa
             "_dlt_id": pa.array(ids, pa.string()),
         }
     )
-    pq.write_table(table, path)
+    # Written under another name first, so a build reading the lake never sees half a file.
+    partial = path.with_name(path.name + ".partial")
+    pq.write_table(table, partial)
+    partial.replace(path)
     return path
 
 
-def parse_rows(path: Path, data: list[str]) -> list[dict]:
+def parse_rows(path: str, data: list[str]) -> list[dict]:
     """The rows of the load to start from; refused when there is nothing to simulate from."""
     if not data:
         raise BadLoad(f"{path} holds no rows")
@@ -121,13 +124,16 @@ class Simulation:
         self.held_back: dict[str, dict] = {}
         self.numbers = {row.get(KEY) for row in seen}
         self.ids = {row.get("ProductId") for row in seen if isinstance(row.get("ProductId"), int)}
-        self.names = {row.get("Name") for row in rows}
 
     def values(self, attribute: str) -> list:
         return sorted({row.get(attribute) for row in self.rows if row.get(attribute) is not None}, key=str)
 
-    def next_load(self, index: int, day: date) -> list[dict]:
-        """The next load's rows: the previous load, back-from-drop products restored, changed."""
+    def next_load(self, index: int, day: date, final: bool) -> list[dict]:
+        """The next load's rows: the previous load, back-from-drop products restored, changed.
+
+        The run's ``final`` load drops no product, since no later load would bring it back; its
+        drop outs are edits instead.
+        """
         rng = random.Random(f"{self.seed}:{index}")
         rows = {row[KEY]: dict(row) for row in self.rows}
         rows.update({number: dict(row) for number, row in self.held_back.items()})
@@ -135,6 +141,8 @@ class Simulation:
         candidates = sorted(rows)
         count = max(len(MIX), round(len(self.rows) * SHARE))
         kinds = self.kinds(rng, count)
+        if final:
+            kinds = ["edit" if kind == "drop out" else kind for kind in kinds]
         picked = rng.sample(candidates, min(len(candidates), sum(1 for k in kinds if k != "new product")))
         targets = iter(picked)
         new_rows = []
@@ -151,7 +159,6 @@ class Simulation:
                 self.edit_fallback(rng, rows[number], day)
         out = [rows[number] for number in sorted(rows, key=lambda n: self.order(n, rows))]
         out.extend(new_rows)
-        self.names |= {row.get("Name") for row in out}
         self.rows = out
         return out
 
@@ -174,9 +181,12 @@ class Simulation:
         if attribute == "Name":
             return f"{current or row[KEY]} {rng.choice(('II', 'Pro', 'Lite', 'Plus', 'Sport'))}"
         if attribute in DATES:
-            base = parse_date(current) or parse_date(row.get("SellStartDate")) or date(2013, 1, 1)
-            shifted = base + timedelta(days=rng.choice((-1, 1)) * rng.randint(1, 365))
-            return shifted.isoformat()
+            # Kept in order: a sell start moves earlier, an end moves to a day after the sell start.
+            start = parse_date(row.get("SellStartDate")) or date(2013, 1, 1)
+            if attribute == "SellStartDate":
+                return (start - timedelta(days=rng.randint(1, 365))).isoformat()
+            ended = (start + timedelta(days=rng.randint(1, 1500))).isoformat()
+            return ended if ended != current else (start + timedelta(days=1501)).isoformat()
         choices = [value for value in self.values(attribute) if value != current]
         return rng.choice(choices) if choices else None
 
@@ -198,7 +208,7 @@ class Simulation:
             if was is None:
                 return False
             row[attribute] = value
-            row[CHANGED_AT] = format_like(row.get(CHANGED_AT), was - timedelta(days=1))
+            row[CHANGED_AT] = (was - timedelta(days=1)).isoformat()
             return True
         row[attribute] = value
         if kind == "edit":
@@ -235,14 +245,10 @@ def parse_date(value) -> date | None:
         return None
 
 
-def format_like(original, value: date) -> str:
-    """``value`` in the shape of ``original``: a plain date, keeping any time part after it."""
-    return value.isoformat() + (original[10:] if isinstance(original, str) else "")
-
-
-def dlt_ids(seed: int, index: int, count: int) -> list[str]:
-    """Deterministic 14-character row ids, as dlt's ``_dlt_id`` is."""
-    return [hashlib.sha256(f"{seed}:{index}:{n}".encode()).hexdigest()[:14] for n in range(count)]
+def dlt_ids(start: str, seed: int, index: int, count: int) -> list[str]:
+    """14-character row ids, as dlt's ``_dlt_id`` is: the same for the same starting load and seed,
+    and different for another starting load, so a seed reused on a grown lake repeats no id."""
+    return [hashlib.sha256(f"{start}:{seed}:{index}:{n}".encode()).hexdigest()[:14] for n in range(count)]
 
 
 def format_id(value: Decimal) -> str:
@@ -252,61 +258,53 @@ def format_id(value: Decimal) -> str:
 # --------------------------------------------------------------------------- the command
 
 
-def positive(text: str) -> int:
-    value = int(text)
-    if value < 1:
-        raise ValueError(text)
-    return value
-
-
-def natural(text: str) -> int:
-    value = int(text)
-    if value < 0:
-        raise ValueError(text)
-    return value
-
-
-positive.__name__ = "positive integer"
-natural.__name__ = "non-negative integer"
-
-
 def parse(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="simulate",
         description="Append seeded, changed copies of the latest Products load to $LAKE_ROOT.",
     )
-    parser.add_argument("--seed", type=natural, help="seed for the changes (default: random, printed)")
-    parser.add_argument("--loads", type=positive, default=1, help="how many changed loads to append (default 1)")
-    return parser.parse_args(argv)
+    parser.add_argument("--seed", type=int, help="seed for the changes (default: random, printed)")
+    parser.add_argument("--loads", type=int, default=1, help="how many changed loads to append (default 1)")
+    args = parser.parse_args(argv)
+    if args.loads < 1:
+        parser.error("--loads must be a positive integer")
+    if args.seed is not None and args.seed < 0:
+        parser.error("--seed must be a non-negative integer")
+    return args
 
 
 def run(seed: int, loads: int, lake: Path) -> list[Path]:
     """Append ``loads`` changed loads to ``lake``, landing the snapshot first on an empty lake."""
     files = landed_files(lake)
+    paths: list[Path] = []
     if files:
-        read = [read_load(path) for path in files]
-        latest_id, latest_path, latest_data = max((lid, path, data) for (lid, data), path in zip(read, files))
-        rows = parse_rows(latest_path, latest_data)
-        seen = [row for _, data in read for row in safe_rows(data)]
-        stamps, last = [], latest_id
-        for _ in range(loads):
-            # Now, as a real ingest stamps a load, but always after the latest load (A3).
-            last = max(Decimal(repr(time.time())), last + 1)
-            stamps.append(last)
+        # One load can span several files; the latest load is all of its files' rows.
+        by_load: dict[Decimal, tuple[list[str], list[str]]] = {}
+        for path in files:
+            load_id, data = read_load(path)
+            names, rows_text = by_load.setdefault(load_id, ([], []))
+            names.append(str(path))
+            rows_text.extend(data)
+        latest_id = max(by_load)
+        rows = parse_rows(", ".join(by_load[latest_id][0]), by_load[latest_id][1])
+        seen = [row for _, data in by_load.values() for row in safe_rows(data)]
         simulation = Simulation(seed, rows, seen)
-        start = []
+        start, stamp, stamp_now = format_id(latest_id), latest_id, True
     else:
         rows = [json.loads(line) for line in SNAPSHOT.read_text().splitlines() if line.strip()]
         simulation = Simulation(seed, rows, rows)
-        stamps = [FIRST_LOAD + DAY * k for k in range(1, loads + 1)]
-        start = [(format_id(FIRST_LOAD), rows)]
-    paths = []
-    for load_id, load_rows in start:
-        paths.append(write_load(lake, load_id, load_rows, dlt_ids(seed, 0, len(load_rows))))
-    for index, stamp in enumerate(stamps, 1):
+        start, stamp, stamp_now = format_id(FIRST_LOAD), FIRST_LOAD, False
+        paths.append(write_load(lake, start, rows, dlt_ids(start, seed, 0, len(rows))))
+    for index in range(1, loads + 1):
+        if stamp_now:
+            # Now, as a real ingest stamps a load; one second after the latest if the clock is behind (A3).
+            now = Decimal(repr(time.time()))
+            stamp = now if now > stamp else stamp + 1
+        else:
+            stamp = stamp + DAY
         day = datetime.fromtimestamp(float(stamp), UTC).date()
-        load_rows = simulation.next_load(index, day)
-        paths.append(write_load(lake, format_id(stamp), load_rows, dlt_ids(seed, index, len(load_rows))))
+        load_rows = simulation.next_load(index, day, final=index == loads)
+        paths.append(write_load(lake, format_id(stamp), load_rows, dlt_ids(start, seed, index, len(load_rows))))
     return paths
 
 
