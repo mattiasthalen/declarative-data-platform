@@ -9,15 +9,17 @@ any source landed something, and ends Failed when anything did not land (ADR-002
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import signal
 import subprocess
+import time
 from dataclasses import dataclass
 
 from prefect import flow, get_client, get_run_logger
 from prefect.client.schemas.objects import FlowRun
 from prefect.deployments import run_deployment
-from prefect.states import Cancelled, Completed, Failed, State
+from prefect.states import Cancelling, Completed, Failed, State
 
 LIST_COMMAND = ["uv", "run", "task", "ingest:list"]
 # `-x` passes the command's own exit status through; without it go-task reports every
@@ -27,10 +29,13 @@ BUILD_COMMAND = ["uv", "run", "task", "-x", "build"]
 LIST_TIMEOUT_SECONDS = 5 * 60
 INGEST_TIMEOUT_SECONDS = 20 * 60
 BUILD_TIMEOUT_SECONDS = 30 * 60
-# How long `run` waits beyond a child's own timeout for it to reach a final state. A child
-# that never starts (no free worker, a pool limit `run` itself fills) would otherwise hold
-# `run`, and with it the deployment's only concurrency slot, for good.
-START_GRACE_SECONDS = 10 * 60
+# How long `run` waits for a child to start, and beyond its own timeout, once started, for it
+# to end. A child that never starts (no free worker, a pool limit `run` itself fills) would
+# otherwise hold `run`, and with it the deployment's only concurrency slot, for good. A build
+# may queue behind one other build, so it gets that build's timeout on top.
+START_WITHIN_SECONDS = 10 * 60
+FINISH_GRACE_SECONDS = 2 * 60
+POLL_SECONDS = 5
 
 # Ingest's exit statuses (ADR-0018): 0 every resource landed, 1 some did, 2 none.
 LANDED_ALL, LANDED_SOME = 0, 1
@@ -60,14 +65,20 @@ def run_command(command: list[str], timeout: float) -> Outcome:
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGKILL)
+        kill_group(proc.pid)
         stdout, stderr = proc.communicate()
         return Outcome(None, stdout, stderr)
     except BaseException:
-        os.killpg(proc.pid, signal.SIGKILL)
+        kill_group(proc.pid)
         proc.wait()
         raise
     return Outcome(proc.returncode, stdout, stderr)
+
+
+def kill_group(pid: int) -> None:
+    # The group is gone when the command ended just before the interruption.
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(pid, signal.SIGKILL)
 
 
 def echo(outcome: Outcome) -> None:
@@ -116,25 +127,39 @@ def landed(child: FlowRun) -> bool:
     return child.state.is_completed() or child.state.name == PARTLY_LANDED
 
 
-async def run_child(deployment: str, parameters: dict, timeout_seconds: float) -> FlowRun:
+async def run_child(
+    deployment: str, parameters: dict, timeout_seconds: float, start_within_seconds: float
+) -> FlowRun:
     """Start a flow run of ``deployment`` under the current flow and wait for it to end.
 
-    One still not final after its own timeout plus START_GRACE_SECONDS is cancelled, and
-    returned as it then stands, not final, so the caller counts it as failed.
+    One not started within ``start_within_seconds``, or not ended FINISH_GRACE_SECONDS past
+    its own timeout once started, is asked to cancel, which stops its process, and returned
+    as it then stands, so the caller counts it as failed.
     """
     child = await run_deployment(
         deployment,
         parameters={**parameters, "timeout_seconds": timeout_seconds},
-        timeout=timeout_seconds + START_GRACE_SECONDS,
+        timeout=0,
         as_subflow=True,
     )
-    if not child.state.is_final():
-        async with get_client() as client:
-            await client.set_flow_run_state(
-                child.id, Cancelled(message="never finished within its timeout"), force=True
-            )
+    deadline = time.monotonic() + start_within_seconds
+    started = False
+    async with get_client() as client:
+        while True:
             child = await client.read_flow_run(child.id)
-    return child
+            if child.state.is_final():
+                return child
+            if not started and child.start_time is not None:
+                started = True
+                deadline = time.monotonic() + timeout_seconds + FINISH_GRACE_SECONDS
+            if time.monotonic() > deadline:
+                # Not forced: a forced Cancelled frees the run's concurrency slot but leaves
+                # its process running, and could overwrite a run that has just completed.
+                await client.set_flow_run_state(
+                    child.id, Cancelling(message="did not finish within its timeout")
+                )
+                return await client.read_flow_run(child.id)
+            await asyncio.sleep(POLL_SECONDS)
 
 
 @flow(name="run")
@@ -147,6 +172,8 @@ async def run(
     build_timeout_seconds: float = BUILD_TIMEOUT_SECONDS,
 ) -> State:
     """One scheduled run: every source ingested in its own flow run, then one build."""
+    # In a thread, so the event loop keeps renewing `run`'s concurrency lease. A cancellation's
+    # signal lands in the main thread and does not kill the listing; its timeout bounds it.
     listing = await asyncio.to_thread(run_command, list_command, LIST_TIMEOUT_SECONDS)
     if listing.exit is None:
         return Failed(message=f"listing the sources timed out after {LIST_TIMEOUT_SECONDS}s")
@@ -164,6 +191,7 @@ async def run(
                 "ingest-source/ingest-source",
                 {"source": source, "command": ingest_command},
                 ingest_timeout_seconds,
+                START_WITHIN_SECONDS,
             )
             for source in sources
         )
@@ -175,7 +203,10 @@ async def run(
         return Failed(message="; ".join(problems) + "; no source landed, so no build")
 
     built = await run_child(
-        "build/build", {"target": target, "command": build_command}, build_timeout_seconds
+        "build/build",
+        {"target": target, "command": build_command},
+        build_timeout_seconds,
+        START_WITHIN_SECONDS + BUILD_TIMEOUT_SECONDS,
     )
     if not built.state.is_completed():
         problems.append(f"build {built.state.name}: {built.state.message}")

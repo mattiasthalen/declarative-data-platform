@@ -36,9 +36,12 @@ tasks:
 
   ingest:source:
     desc: Land one source's resources (task -x ingest:source -- SOURCE); with -x, exits 0 all landed, 1 some, 2 none
-    # The name reaches the shell only as a variable: go-task's quoting of CLI_ARGS does not
-    # survive inside double quotes, where `$(...)` in a name would run. `--` keeps a name
-    # starting with `-` from being read as one of ingest's options.
+    # The precondition reads the name as a variable: go-task's quoting of CLI_ARGS does not
+    # survive inside double quotes, where `$(...)` in a name would run. go-task also renders
+    # CLI_ARGS as a template, so a name holding `{{...}}` can still escape the cmd's quoting.
+    # Scheduled names come from `ingest --list`, which admits only snake_case; whoever can set a
+    # name by hand can set the command too (ADR-0024). `--` keeps a name starting with `-` from
+    # being read as one of ingest's options.
     env:
       SOURCE_ARGS: "{{.CLI_ARGS}}"
     preconditions:
