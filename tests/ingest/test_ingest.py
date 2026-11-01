@@ -410,7 +410,9 @@ def test_row_lands_whole_with_nested_fields(feed, work, lake):
         columns = dict(
             (name, kind)
             for name, kind, *_ in con.execute(
-                "describe select * from read_parquet(?)", [[p.as_posix() for p in files["shop__things"]]]
+                # The files' own columns: DuckDB would otherwise read date= and hour= off the path.
+                "describe select * from read_parquet(?, hive_partitioning = false)",
+                [[p.as_posix() for p in files["shop__things"]]],
             ).fetchall()
         )
     finally:
@@ -558,6 +560,94 @@ def test_redirect_to_another_host_fails_the_resource(feed, other_feed, work, lak
     assert landed(lake) == {}, "a resource that failed landed rows"
 
 
+def _foreign_page(other_feed: Feed) -> None:
+    """What the other host would serve, so that a request to it would land rows."""
+    page = (200, {"value": [product(9, "FG-0009", "Foreign")]})
+    for path in ("/Products", "/Products?page=2"):
+        other_feed.pages[path] = page
+
+
+def _assert_refused_without_asking(code: int, feed: Feed, other_feed: Feed, lake: Path, said: str) -> None:
+    assert code == 2, said
+    assert other_feed.requested == [], f"the other host was asked for {other_feed.requested}"
+    assert "products" in said
+    assert landed(lake) == {}, "a resource that failed landed rows"
+
+
+def test_next_link_guard_holds_for_json_link_paginator(feed, other_feed, work, lake, capsys):
+    """AC6, every paginator: a resource declaring a json_link paginator whose ``next`` points at another
+    host fails, and that host is never asked."""
+    _foreign_page(other_feed)
+    foreign = f"http://localhost:{other_feed.server.server_port}/Products?page=2"
+    feed.pages["/Products"] = (200, {"value": [product(1, "JL-0001", "Home")], "next": foreign})
+    declare(
+        work,
+        "adventure_works",
+        f"{feed.base}/",
+        {"products": entry("Products", paginator={"type": "json_link", "next_url_path": "next"})},
+    )
+
+    code = ingest()
+
+    _assert_refused_without_asking(code, feed, other_feed, lake, stderr(capsys))
+    assert feed.requested == ["/Products"]
+
+
+def test_next_link_guard_holds_for_header_link_paginator(feed, other_feed, work, lake, capsys):
+    """AC6, every paginator: a resource declaring a header_link paginator whose ``Link: rel="next"``
+    points at another host fails, and that host is never asked."""
+    _foreign_page(other_feed)
+    foreign = f"http://localhost:{other_feed.server.server_port}/Products?page=2"
+    feed.pages["/Products"] = (
+        200,
+        {"value": [product(1, "HL-0001", "Home")]},
+        {"Link": f'<{foreign}>; rel="next"'},
+    )
+    declare(work, "adventure_works", f"{feed.base}/", {"products": entry("Products", paginator={"type": "header_link"})})
+
+    code = ingest()
+
+    _assert_refused_without_asking(code, feed, other_feed, lake, stderr(capsys))
+    assert feed.requested == ["/Products"]
+
+
+@pytest.mark.parametrize("hint", ["body", "header"])
+def test_next_link_guard_holds_for_auto_detected_paginator(feed, other_feed, work, lake, capsys, hint):
+    """AC6, every paginator: with no paginator named in _source.yaml, dlt detects one from the first page;
+    a next link it detects to another host fails the resource, and that host is never asked."""
+    _foreign_page(other_feed)
+    foreign = f"http://localhost:{other_feed.server.server_port}/Products?page=2"
+    rows_ = [product(1, "AD-0001", "Home")]
+    if hint == "body":
+        feed.pages["/Products"] = (200, {"value": rows_, "next": foreign})
+    else:
+        feed.pages["/Products"] = (200, {"value": rows_}, {"Link": f'<{foreign}>; rel="next"'})
+    config = source_config(f"{feed.base}/")
+    assert config["rest_api"]["client"].pop("paginator", None) is not None, "the repo's _source.yaml names no paginator"
+    declare(work, "adventure_works", None, {"products": entry("Products")}, config=config)
+
+    code = ingest()
+
+    _assert_refused_without_asking(code, feed, other_feed, lake, stderr(capsys))
+    assert feed.requested == ["/Products"]
+
+
+def test_absolute_endpoint_path_to_another_host_is_refused(feed, other_feed, work, lake, capsys):
+    """AC6, every request: a resource whose endpoint.path is an absolute URL on another host fails, and
+    that host is never asked."""
+    _foreign_page(other_feed)
+    declare(
+        work,
+        "adventure_works",
+        f"{feed.base}/",
+        {"products": entry(f"http://localhost:{other_feed.server.server_port}/Products")},
+    )
+
+    code = ingest()
+
+    _assert_refused_without_asking(code, feed, other_feed, lake, stderr(capsys))
+
+
 # --------------------------------------------------------------------------- AC7, AC14, EC3, EC6: declarations checked
 
 
@@ -588,6 +678,24 @@ def test_append_only_refuses_other_dispositions(feed, work, lake, capsys, dispos
 
     assert code == 1
     assert "other.yaml" in stderr(capsys)
+    assert set(landed(lake)) == {"good__items"}
+
+
+@pytest.mark.parametrize("disposition", ["replace", "merge"])
+def test_append_only_refuses_source_level_dispositions(feed, work, lake, capsys, disposition):
+    """AC7: a write_disposition of replace or merge under _source.yaml's rest_api.resource_defaults fails
+    its source, naming _source.yaml; nothing of that source lands, another source still does (exit 1)."""
+    _good_source(work, feed)
+    _served(feed, "Fine", "Other")
+    config = source_config(f"{feed.base}/")
+    config["rest_api"].setdefault("resource_defaults", {})["write_disposition"] = disposition
+    declare(work, "bad", None, {"fine": entry("Fine"), "other": entry("Other")}, config=config)
+
+    code = ingest()
+
+    said = stderr(capsys)
+    assert code == 1, said
+    assert "_source.yaml" in said
     assert set(landed(lake)) == {"good__items"}
 
 
@@ -635,6 +743,23 @@ BAD_DECLARATIONS = {
     "file_name_not_snake_case_hyphen": (
         lambda work, base: declare(work, "bad", base, {"fine": entry("Fine"), "product-lines": entry("Other")}),
         ["product-lines.yaml"],
+    ),
+    # A double underscore separates source from resource in <source>__<resource>.
+    "resource_name_with_double_underscore": (
+        lambda work, base: declare(work, "bad", base, {"fine": entry("Fine"), "b__c": entry("Other")}),
+        ["b__c.yaml"],
+    ),
+    "resource_name_ending_in_underscore": (
+        lambda work, base: declare(work, "bad", base, {"fine": entry("Fine"), "other_": entry("Other")}),
+        ["other_.yaml"],
+    ),
+    "source_name_with_double_underscore": (
+        lambda work, base: declare(work, "a__b", base, {"fine": entry("Fine")}),
+        ["a__b"],
+    ),
+    "source_name_ending_in_underscore": (
+        lambda work, base: declare(work, "bad_", base, {"fine": entry("Fine")}),
+        ["bad_"],
     ),
 }
 
