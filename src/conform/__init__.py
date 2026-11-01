@@ -14,6 +14,7 @@ from pathlib import Path
 
 import yaml
 
+import erd
 import ownership
 
 GENERATOR = "conform"
@@ -206,8 +207,9 @@ def schema_file(name: str, contract: dict, properties: list[dict]) -> str:
     return yaml.safe_dump(document, sort_keys=False, allow_unicode=True, width=100)
 
 
-def packages(root: Path) -> dict[Path, dict[str, str]]:
-    out: dict[Path, dict[str, str]] = {}
+def contracts(root: Path) -> list[dict]:
+    """Every contract, checked against its place in contracts/<source>/, in file-name order."""
+    found = []
     for path in sorted((root / CONTRACTS).glob("*.yaml")):
         raise ContractError(f"{path}: a contract lives in its source's folder, contracts/<source>/")
     for path in sorted((root / CONTRACTS).glob("*/*.yaml")):
@@ -222,6 +224,17 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
         resource = obj.get("physicalName") or name
         if resource != f"{domain}__{path.stem}":
             raise ContractError(f"{path}: reads {resource!r}, not its file's resource {domain}__{path.stem}")
+        found.append(contract)
+    return found
+
+
+def packages(contracts: list[dict]) -> dict[Path, dict[str, str]]:
+    out: dict[Path, dict[str, str]] = {}
+    for contract in contracts:
+        domain = contract["domain"]
+        obj = contract["schema"][0]
+        name = obj["name"]
+        resource = obj.get("physicalName") or name
         properties = obj.get("properties") or []
         raw = f"raw__{name}"
         out.setdefault(Path("models") / "raw" / domain, {})[f"{raw}.sql"] = raw_model(name, resource)
@@ -231,14 +244,30 @@ def packages(root: Path) -> dict[Path, dict[str, str]]:
     return out
 
 
+def diagram(contracts: list[dict]) -> str:
+    """Each staged model with its primary key, as conform types it."""
+    entities = []
+    for contract in contracts:
+        obj = contract["schema"][0]
+        keys = [p for p in obj.get("properties") or [] if p.get("primaryKey")]
+        entities.append((obj["name"], [erd.row(TYPES[p["logicalType"]] or "varchar", p["name"], "PK") for p in keys]))
+    return erd.diagram(entities)
+
+
 def generate(*, check: bool = False) -> int:
     """Write the models, or with ``check`` report drift: 0 written or clean, 1 drift, 2 invalid declarations."""
     try:
-        planned = packages(Path.cwd())
+        declared = contracts(Path.cwd())
     except ContractError as error:
         print(error)
         return 2
-    return ownership.run(GENERATOR, "the data contracts in contracts/<source>/", planned, check=check)
+    return ownership.run(
+        GENERATOR,
+        "the data contracts in contracts/<source>/",
+        packages(declared),
+        erd.region(GENERATOR, diagram(declared)),
+        check=check,
+    )
 
 
 def main() -> int:

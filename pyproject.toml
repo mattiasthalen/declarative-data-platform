@@ -28,6 +28,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ingest", "src/conform", "src/integrate", "src/serve", "src/ownership", "src/simulate"]
+packages = ["src/ingest", "src/conform", "src/integrate", "src/serve", "src/ownership", "src/erd"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
