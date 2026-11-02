@@ -131,9 +131,10 @@ class Simulation:
     def next_load(self, index: int, day: date, final: bool) -> list[dict]:
         """The next load's rows: the previous load, back-from-drop products restored, changed.
 
-        A product drops out for one load only: the run's ``final`` load drops none, since no later
-        load would bring it back, and a product just back is not dropped again. Those drop outs
-        are edits instead.
+        Within a run that completes, a product drops out for one load only: the run's ``final`` load
+        drops none, since no later load would bring it back, and a product just back is not dropped
+        again. Those drop outs are edits instead. A run stopped between a drop out and the next load
+        leaves the product out, and no later run brings it back (ADR-0027 addendum).
         """
         rng = random.Random(f"{self.seed}:{index}")
         rows = {row[KEY]: dict(row) for row in self.rows}
