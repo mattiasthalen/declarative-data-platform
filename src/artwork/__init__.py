@@ -53,7 +53,7 @@ SPOKES = [
 ]
 
 # Percent of the run at which each stage is reached and left: tiles travel between them.
-APPEAR, RAW_HELD, GRID_IN, GRID_OUT, ANCHOR_IN, ANCHOR_OUT, STAR_IN = 5, 7, 17, 26, 35, 44, 53
+APPEAR, RAW_HELD, GRID_IN, GRID_OUT, ANCHOR_IN, ANCHOR_OUT, STAR_IN = 5, 7, 17, 30, 39, 52, 61
 
 
 def num(value: float) -> str:
@@ -145,6 +145,8 @@ def tile(i: int) -> str:
 # The first trail, from the raw tiles to the pages: (x, its rest opacity in the still).
 FEED = [(426, 0.18), (436, 0.32), (446, 0.46)]
 MOVES = (RAW_HELD, GRID_OUT, ANCHOR_OUT)
+# Where each move lands: the shape the second trail reconnects to.
+LANDS = (GRID_IN, ANCHOR_IN, STAR_IN)
 # Percent of the run between one dot of a wave lighting and the next, raw to shape.
 WAVE_STEP = 2
 
@@ -152,10 +154,10 @@ WAVE_STEP = 2
 def feed_points(dot: int, rest: float) -> list[tuple[float, float]]:
     """Data coming in: a pulse runs along the trail, raw to pages, until the star forms.
 
-    The pulse at each move runs on into the second trail, one wave from raw to shape;
-    another pulse runs halfway between moves.
+    The pulse as each shape lands runs on into the second trail, one wave from raw to shape;
+    another pulse runs halfway between them.
     """
-    synced = [move - 3 for move in MOVES]
+    synced = [land - 5 for land in LANDS]
     starts = sorted(synced + [(a + b) / 2 for a, b in itertools.pairwise(synced)])
     points = [(0, rest)]
     for start in starts:
@@ -169,10 +171,10 @@ TRAIL = [(525, 0.5), (535, 0.65), (545, 0.8)]
 
 
 def trail_points(dot: int, rest: float) -> list[tuple[float, float]]:
-    """Dark until the first shape forms; on each move it drops and reconnects dot by dot, pages to shape."""
+    """Dark while a shape is forming; once it lands the trail reconnects dot by dot, pages to shape."""
     points = [(0, 0)]
-    for move in MOVES:
-        lit = move + 3 + WAVE_STEP * dot
+    for move, land in zip(MOVES, LANDS, strict=True):
+        lit = land + 1 + WAVE_STEP * dot
         points += [(move, 0 if move == RAW_HELD else rest), (move + 1, 0), (lit, 0), (lit + 2, rest)]
     return list(dict(points + [(100, rest)]).items())
 
