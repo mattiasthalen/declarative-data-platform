@@ -160,12 +160,12 @@ TRAIL = [(525, 0.5), (535, 0.65), (545, 0.8)]
 
 
 def trail_points(dot: int, rest: float) -> list[tuple[float, float]]:
-    """Dark until the first shape forms; then a pulse runs along the trail on each move, pages to shape."""
+    """Dark until the first shape forms; on each move it drops and reconnects dot by dot, pages to shape."""
     points = [(0, 0)]
     for move in (RAW_HELD, GRID_OUT, ANCHOR_OUT):
-        peak = move + 3 + 2 * dot
-        points += [(peak - 2, rest if move != RAW_HELD else 0), (peak, 1), (peak + 3, rest)]
-    return points + [(100, rest)]
+        lit = move + 3 + 2 * dot
+        points += [(move, 0 if move == RAW_HELD else rest), (move + 1, 0), (lit, 0), (lit + 2, rest)]
+    return list(dict(points + [(100, rest)]).items())
 
 
 def style() -> list[str]:
