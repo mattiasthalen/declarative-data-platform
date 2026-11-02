@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/hero.svg" width="100%" alt="Declarative Data Platform: raw data, a handful of declarations, a star schema."></p>
+<p align="center"><img src="assets/hero.svg" width="100%" alt="Declarative Data Platform: raw data, a handful of declarations, a star schema."></p>
 
 Declarations in, structure out. Today serve generates a Unified Star Schema.
 A source is declared once: what ingest lands
