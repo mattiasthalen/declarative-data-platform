@@ -1,8 +1,14 @@
-"""The CI workflow runs `task check` and the suite on every pull request and push to main (story 2, AC10)."""
+"""How CI runs the suite: `task check` and the tests on every pull request and push to main (story 2, AC10), in parallel under pytest-xdist (story #35)."""
 
 from __future__ import annotations
 
 import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import tomllib
 
 import pytest
 import yaml
@@ -95,3 +101,159 @@ def test_check_and_test_run_in_parallel(workflow):
         needs = job(workflow, name).get("needs") or []
         needs = [needs] if isinstance(needs, str) else needs
         assert other not in needs, f"job {name} waits on {other}"
+
+
+# Story #35: the suite runs in parallel under pytest-xdist.
+
+PYPROJECT = REPO / "pyproject.toml"
+LOCKFILE = REPO / "uv.lock"
+TASKFILE = REPO / "Taskfile.yml"
+CLAUDE_MD = REPO / "CLAUDE.md"
+
+# Environment that would steer a nested pytest away from the repo's own configuration.
+NESTED_ENV_OVERRIDES = ("PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTEST_XDIST_AUTO_NUM_WORKERS")
+WORKERS_CREATED = re.compile(r"created: (\d+)/(\d+) workers")
+ONE_PASSED = re.compile(r"(?<!\d)1 passed")
+
+
+def arguments(value: str | list[str]) -> list[str]:
+    if isinstance(value, list):
+        return [arg for item in value for arg in shlex.split(item)]
+    return shlex.split(value)
+
+
+def option_values(args: list[str], short: str, long: str) -> list[str]:
+    """Every value given to an option, in any of `-n V`, `-nV`, `-n=V`, `--long V`, `--long=V`."""
+    values = []
+    for i, arg in enumerate(args):
+        if arg in (short, long):
+            values.append(args[i + 1] if i + 1 < len(args) else "")
+        elif arg.startswith(long + "="):
+            values.append(arg[len(long) + 1 :])
+        elif arg.startswith(short) and not arg.startswith("--"):
+            values.append(arg[len(short) :].removeprefix("="))
+    return values
+
+
+def addopts() -> list[str]:
+    config = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    ini = config.get("tool", {}).get("pytest", {}).get("ini_options", {})
+    return arguments(ini.get("addopts", ""))
+
+
+def test_xdist_in_dev_group_and_locked():
+    """AC1: pytest-xdist is in the `dev` dependency group, and uv.lock locks it."""
+    config = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    dev = config.get("dependency-groups", {}).get("dev", [])
+    names = [
+        re.split(r"[\s\[<>=!~;@]", req, maxsplit=1)[0].lower().replace("_", "-")
+        for req in dev
+        if isinstance(req, str)
+    ]
+    assert "pytest-xdist" in names, f"dependency-groups.dev is {dev}"
+    lock = tomllib.loads(LOCKFILE.read_text(encoding="utf-8"))
+    locked = {package.get("name") for package in lock.get("package", [])}
+    assert "pytest-xdist" in locked, "uv.lock has no package named pytest-xdist"
+
+
+def test_addopts_runs_in_parallel():
+    """AC2: addopts holds `-n auto` and `-p no:cacheprovider`, and names no `--dist`."""
+    args = addopts()
+    assert "auto" in option_values(args, "-n", "--numprocesses"), f"addopts is {args}"
+    assert "no:cacheprovider" in option_values(args, "-p", "--plugin"), f"addopts is {args}"
+    dist = [arg for arg in args if arg == "--dist" or arg.startswith("--dist=")]
+    assert not dist, f"addopts names {dist}; the default load split is the one decided"
+
+
+def turns_xdist_off_or_sets_workers(args: list[str]) -> list[str]:
+    return [
+        arg
+        for arg in args
+        if (arg.startswith("-n") and not arg.startswith("--"))
+        or arg.startswith("--numprocesses")
+        or "no:xdist" in arg
+    ]
+
+
+def test_test_job_keeps_xdist_on(workflow):
+    """AC3: the test job runs `uv run pytest` and nothing that turns xdist off or sets its worker count."""
+    j = job(workflow, "test")
+    commands = runs(j)
+    assert commands, "the test job runs nothing"
+    for run in commands:
+        assert "uv run pytest" in run, f"the test job runs {run!r}"
+        found = turns_xdist_off_or_sets_workers(arguments(run))
+        assert not found, f"the test job's {run!r} passes {found}"
+    for scope in [workflow, j, *(j.get("steps") or [])]:
+        env = scope.get("env") or {}
+        assert "PYTEST_XDIST_AUTO_NUM_WORKERS" not in env, f"env sets the worker count: {env}"
+        found = turns_xdist_off_or_sets_workers(arguments(str(env.get("PYTEST_ADDOPTS", ""))))
+        assert not found, f"PYTEST_ADDOPTS passes {found}"
+
+
+def nested_pytest(tmp_path, *extra: str) -> subprocess.CompletedProcess:
+    """One trivial passing test, run by pytest under the repo's pyproject.toml (its addopts included).
+
+    `--rootdir` and `--confcutdir` keep the run inside tmp_path, so it neither loads the repo's
+    conftest nor collects the repo's suite.
+    """
+    (tmp_path / "test_trivial.py").write_text("def test_trivial():\n    assert True\n", encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k not in NESTED_ENV_OVERRIDES}
+    return subprocess.run(
+        [
+            sys.executable, "-m", "pytest",
+            "-c", str(PYPROJECT),
+            "--rootdir", str(tmp_path),
+            "--confcutdir", str(tmp_path),
+            *extra,
+            str(tmp_path / "test_trivial.py"),
+        ],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+
+
+def test_plain_run_starts_workers(tmp_path):
+    """AC4: a plain run under the repo's configuration starts xdist workers and passes."""
+    result = nested_pytest(tmp_path)
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert ONE_PASSED.search(output), f"expected exactly the one trivial test to pass:\n{output}"
+    created = WORKERS_CREATED.search(output)
+    assert created, f"no `created: N/N workers` line:\n{output}"
+    started, asked = int(created[1]), int(created[2])
+    assert started == asked >= 1, created[0]
+
+
+def test_serial_run_starts_no_workers(tmp_path):
+    """EC4: `-n 0` runs serially, with no xdist workers, and the same test passes."""
+    result = nested_pytest(tmp_path, "-n", "0")
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert ONE_PASSED.search(output), f"expected exactly the one trivial test to pass:\n{output}"
+    assert "created:" not in output, f"`-n 0` started workers:\n{output}"
+
+
+def test_test_rules_runs_serially():
+    """AC5: `task test-rules` runs `pytest -m claude -n 0`."""
+    tasks = yaml.safe_load(TASKFILE.read_text(encoding="utf-8")).get("tasks") or {}
+    assert "test-rules" in tasks, f"no task test-rules; tasks are {sorted(tasks)}"
+    cmds = tasks["test-rules"].get("cmds") or []
+    commands = [c if isinstance(c, str) else str(c.get("cmd", "")) for c in cmds]
+    for command in commands:
+        args = arguments(command)
+        if "pytest" in args and "claude" in option_values(args, "-m", "-m"):
+            assert "0" in option_values(args, "-n", "--numprocesses"), f"test-rules runs {command!r}"
+            return
+    pytest.fail(f"test-rules runs no `pytest -m claude`: {commands}")
+
+
+def test_claude_md_names_the_serial_run():
+    """AC6: CLAUDE.md's "Proving a change" names `uv run pytest -n 0` as the serial run."""
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    section = re.search(r"^## Proving a change\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    assert section, "CLAUDE.md has no section 'Proving a change'"
+    assert "uv run pytest -n 0" in section[1], section[1]

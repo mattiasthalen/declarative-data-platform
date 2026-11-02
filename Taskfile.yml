@@ -64,7 +64,7 @@ tasks:
   test-rules:
     desc: Prove each layer's agent rules load, in real Claude Code sessions (local only)
     cmds:
-      - uv run pytest -m claude
+      - uv run pytest -m claude -n 0
 
   orchestrate:server:
     desc: Start a local Prefect server, standing in for the infra's (http://127.0.0.1:4200)
