@@ -22,7 +22,6 @@ ASSETS = Path("assets")
 
 TITLE = "Declarative Data Platform: raw data, a handful of declarations, a star schema."
 SECONDS = 11
-TILE = 22
 
 INK = "#e9e9ed"
 SURFACE = "#232532"
@@ -95,16 +94,24 @@ def segment(a, b, from_edge: float, to_edge: float) -> str:
 
 def square_edge(dx: float, dy: float) -> float:
     """How far a tile's edge is from its centre, in direction (dx, dy)."""
-    return (TILE / 2) * math.hypot(dx, dy) / max(abs(dx), abs(dy))
+    return 11 * math.hypot(dx, dy) / max(abs(dx), abs(dy))
 
 
 def anchor_lines() -> str:
     lines = []
-    for i, centre in ATTRIBUTES.items():
-        anchor = LEFT if i in (0, 2, 6) else RIGHT
+    for centre in ATTRIBUTES.values():
+        anchor = LEFT if centre[0] < TIE[0] else RIGHT
         lines.append(segment(anchor, centre, square_edge(centre[0] - anchor[0], centre[1] - anchor[1]), 9))
     lines += [segment(LEFT, TIE, 11, 11), segment(TIE, RIGHT, 11, 11)]
     return "".join(lines)
+
+
+def lit(x: float, y: float) -> str:
+    """A tile in the accent: the bridge in the still, an anchor while stage three holds."""
+    return (
+        f'<rect x="{num(x)}" y="{num(y)}" width="22" height="22" rx="4" {LIT}/>'
+        f'<circle cx="{num(x + 11)}" cy="{num(y + 11)}" r="3.5" fill="{ACCENT}" stroke="none"/>'
+    )
 
 
 def tile(i: int) -> str:
@@ -117,15 +124,13 @@ def tile(i: int) -> str:
             f'<g class="t{i}">'
             f'<g class="square-out" opacity="0">{square}</g>'
             f'<polygon class="shape" opacity="0" points="{diamond}" stroke-linejoin="round"/>'
-            f'<g class="bridge"><rect x="{num(x)}" y="{num(y)}" width="22" height="22" rx="4" {LIT}/>'
-            f'<circle cx="{num(cx)}" cy="{num(cy)}" r="3.5" fill="{ACCENT}" stroke="none"/></g>'
+            f'<g class="bridge">{lit(x, y)}</g>'
             "</g>"
         )
     if i in ANCHORS:
         return (
             f'<g class="t{i}">{square}'
-            f'<g class="anchor" opacity="0"><rect x="{num(x)}" y="{num(y)}" width="22" height="22" rx="4" {LIT}/>'
-            f'<circle cx="{num(cx)}" cy="{num(cy)}" r="3.5" fill="{ACCENT}" stroke="none"/></g>'
+            f'<g class="anchor" opacity="0">{lit(x, y)}</g>'
             "</g>"
         )
     return (
@@ -136,37 +141,66 @@ def tile(i: int) -> str:
     )
 
 
-def pages_style() -> list[str]:
-    """Each page lights while the tiles take the shape it declares."""
-    rules = []
-    for name, rest, start, end in (("page-back", 0.2, 6, 20), ("page-middle", 0.28, 24, 38), ("page-front", 0.35, 42, 56)):
-        rules.append(f".{name} {{ animation: {name} {SECONDS}s linear backwards; }}")
-        rules.append(keyframes(name, fades([(0, rest), (start, rest), (start + 3, 0.7), (end, 0.7), (end + 4, rest), (100, rest)], "stroke-opacity")))
-    return rules
+# The first trail, from the raw tiles to the pages: (x, its rest opacity in the still).
+FEED = [(426, 0.18), (436, 0.32), (446, 0.46)]
+FEED_EVERY = 11
+
+
+def feed_points(dot: int, rest: float) -> list[tuple[float, float]]:
+    """Data coming in: a pulse runs along the trail, raw to pages, every FEED_EVERY percent until the star forms."""
+    points = [(0, rest)]
+    for start in range(0, STAR_IN + 1, FEED_EVERY):
+        peak = start + 2 + 2 * dot
+        points += [(peak - 2, rest), (peak, 1), (peak + 3, rest)]
+    return list(dict(points + [(100, rest)]).items())
+
+
+# The second trail, from the pages to each shape they declare: (x, its rest opacity in the still).
+TRAIL = [(525, 0.5), (535, 0.65), (545, 0.8)]
+
+
+def trail_points(dot: int, rest: float) -> list[tuple[float, float]]:
+    """Dark until the first shape forms; then a pulse runs along the trail on each move, pages to shape."""
+    points = [(0, 0)]
+    for move in (RAW_HELD, GRID_OUT, ANCHOR_OUT):
+        peak = move + 3 + 2 * dot
+        points += [(peak - 2, rest if move != RAW_HELD else 0), (peak, 1), (peak + 3, rest)]
+    return points + [(100, rest)]
 
 
 def style() -> list[str]:
-    animated = [f".t{i}" for i in range(9)]
-    rules = []
-    for i in range(9):
-        rules.append(f".t{i} {{ animation: t{i} {SECONDS}s ease-in-out backwards; }}")
-        rules.append(keyframes(f"t{i}", tile_stops(i)))
-    timed = {
-        "square": [(0, 1), (28, 1), (33, 0), (46, 0), (51, 1), (100, 1)],
-        "square-out": [(0, 1), (28, 1), (33, 0), (100, 0)],
-        "shape": [(0, 0), (28, 0), (33, 1), (46, 1), (51, 0), (100, 0)],
-        "anchor": [(0, 0), (30, 0), (35, 1), (45, 1), (51, 0), (100, 0)],
-        "anchor-lines": [(0, 0), (34, 0), (37, 1), (44, 1), (47, 0), (100, 0)],
-        "bridge": [(0, 0), (46, 0), (53, 1), (100, 1)],
-        "spokes": [(0, 0), (52, 0), (56, 1), (100, 1)],
-        "glow": [(0, 0), (50, 0), (56, 1), (100, 1)],
-    }
-    for name, points in timed.items():
-        rules.append(f".{name} {{ animation: {name} {SECONDS}s linear backwards; }}")
-        rules.append(keyframes(name, fades(points)))
+    rules, animated = [], []
+
+    def animate(name: str, timing: str, stops: list[tuple[float, str]]) -> None:
+        rules.append(f".{name} {{ animation: {name} {SECONDS}s {timing} backwards; }}")
+        rules.append(keyframes(name, stops))
         animated.append(f".{name}")
-    rules += pages_style()
-    animated += [".page-back", ".page-middle", ".page-front"]
+
+    for i in range(9):
+        animate(f"t{i}", "ease-in-out", tile_stops(i))
+    shown, hidden = (GRID_OUT + 2, ANCHOR_IN - 2), (ANCHOR_OUT + 2, STAR_IN - 2)
+    for name, points in {
+        "square": [(0, 1), (shown[0], 1), (shown[1], 0), (hidden[0], 0), (hidden[1], 1), (100, 1)],
+        "square-out": [(0, 1), (shown[0], 1), (shown[1], 0), (100, 0)],
+        "shape": [(0, 0), (shown[0], 0), (shown[1], 1), (hidden[0], 1), (hidden[1], 0), (100, 0)],
+        "anchor": [(0, 0), (GRID_OUT + 4, 0), (ANCHOR_IN, 1), (ANCHOR_OUT + 1, 1), (STAR_IN - 2, 0), (100, 0)],
+        "anchor-lines": [(0, 0), (ANCHOR_IN - 1, 0), (ANCHOR_IN + 2, 1), (ANCHOR_OUT, 1), (ANCHOR_OUT + 3, 0), (100, 0)],
+        "bridge": [(0, 0), (ANCHOR_OUT + 2, 0), (STAR_IN, 1), (100, 1)],
+        "spokes": [(0, 0), (STAR_IN - 1, 0), (STAR_IN + 3, 1), (100, 1)],
+        "glow": [(0, 0), (STAR_IN - 3, 0), (STAR_IN + 3, 1), (100, 1)],
+    }.items():
+        animate(name, "linear", fades(points))
+    # Each page lights while the tiles take the shape it declares.
+    for name, rest, start, end in (
+        ("page-back", 0.2, RAW_HELD - 1, GRID_IN + 3),
+        ("page-middle", 0.28, GRID_OUT - 2, ANCHOR_IN + 3),
+        ("page-front", 0.35, ANCHOR_OUT - 2, STAR_IN + 3),
+    ):
+        animate(name, "linear", fades([(0, rest), (start, rest), (start + 3, 0.7), (end, 0.7), (end + 4, rest), (100, rest)], "stroke-opacity"))
+    for dot, (_, rest) in enumerate(FEED):
+        animate(f"feed{dot}", "linear", fades(feed_points(dot, rest), "fill-opacity"))
+    for dot, (_, rest) in enumerate(TRAIL):
+        animate(f"trail{dot}", "linear", fades(trail_points(dot, rest), "fill-opacity"))
     rules.append("@media (prefers-reduced-motion: reduce) { " + ", ".join(animated) + " { animation: none; } }")
     return rules
 
@@ -179,6 +213,11 @@ def hero() -> str:
     ring = "".join(tile(i) for i in range(9) if i != BRIDGE)
     spokes = "".join(f'<line x1="{num(a[0])}" y1="{num(a[1])}" x2="{num(b[0])}" y2="{num(b[1])}"/>' for a, b in SPOKES)
     raw = "".join(f'<rect x="{x}" y="{y}" width="22" height="22" rx="4"/>' for x, y in RAW)
+    dots = "\n    ".join(
+        f'<circle class="{name}{dot}" cx="{x}" cy="125" r="2" fill-opacity="{rest}"/>'
+        for name, trail in (("feed", FEED), ("trail", TRAIL))
+        for dot, (x, rest) in enumerate(trail)
+    )
     motion = "\n".join(f"    {rule}" for rule in style())
     licence = (HERE / "OFL.txt").read_text(encoding="utf-8")
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 240" role="img">
@@ -227,12 +266,7 @@ def hero() -> str:
     {tile(BRIDGE)}
   </g>
   <g fill="{INK}">
-    <circle cx="426" cy="125" r="2" fill-opacity="0.18"/>
-    <circle cx="436" cy="125" r="2" fill-opacity="0.32"/>
-    <circle cx="446" cy="125" r="2" fill-opacity="0.46"/>
-    <circle cx="525" cy="125" r="2" fill-opacity="0.5"/>
-    <circle cx="535" cy="125" r="2" fill-opacity="0.65"/>
-    <circle cx="545" cy="125" r="2" fill-opacity="0.8"/>
+    {dots}
   </g>
 <metadata><![CDATA[
 {licence}]]></metadata>
