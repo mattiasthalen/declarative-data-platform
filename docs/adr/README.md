@@ -35,3 +35,4 @@ Nygard's format: Context, Decision, Consequences, with a Status. One decision pe
 | [0029](0029-ship-the-readmes-artwork-as-svg-committed-under-docs.md) | Ship the README's artwork as SVG committed under docs/ | Accepted (2026-11-01); partly superseded by ADR-0032 |
 | [0030](0030-expose-the-point-in-time-perspective-as-a-duckdb-table-macro.md) | Expose the point-in-time perspective as a DuckDB table macro | Accepted (2026-11-01) |
 | [0032](0032-keep-the-readmes-artwork-in-assets-at-the-repo-root.md) | Keep the README's artwork in assets/ at the repo root | Accepted (2026-11-02) |
+| [0033](0033-expose-the-time-traveling-perspective-as-a-duckdb-table-macro-taking-a-changing-and-a-positing-time.md) | Expose the time-traveling perspective as a DuckDB table macro taking a changing and a positing time | Accepted (2026-11-02) |
