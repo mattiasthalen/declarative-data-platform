@@ -15,3 +15,7 @@ Rejected: a view of every version with its own valid-from and valid-to, filtered
 ## Consequences
 
 Integrate offers the crt reads that matter for one positor: the assembled views (every statement), `l<anchor>` (latest) and `p<anchor>` (any changing time); Roenbaeck's now perspective `n<anchor>` is `p<anchor>` at the current time and is not generated. A downstream model can use the macro only as a call, `{{ ref('pPR_Product') }}(<time>)`, and no generic dbt test can select from it; it is checked by the test suite. It is designed and tested to be called once per time, not for each row of another table. The time is compared with ChangedAt as the source's own clock, which carries no zone (A6): a date means its midnight, and a `timestamptz` such as `now()` is read in the session's time zone. A dbt materialization of our own is code to keep working across dbt-duckdb upgrades (A24). The as-known-at perspective (positing time, #5) is a separate decision.
+
+## Addendum 2026-11-02
+
+The as-known-at read this ADR left open is decided in [ADR-0033](0033-expose-the-time-traveling-perspective-as-a-duckdb-table-macro-taking-a-changing-and-a-positing-time.md): a separate table macro, `t<anchor>(changingTimepoint, positingTimepoint)`, Roenbaeck's time-traveling perspective. `p<anchor>` keeps its one parameter, and equals `t<anchor>` at a positing time at or after the latest load.
