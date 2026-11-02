@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 240" role="img">
+  <title>Declarative Data Platform: raw data, a handful of declarations, a star schema.</title>
+  <style>
+    .wordmark { font-family: "Spectral", Georgia, serif; font-weight: 600; font-size: 22px; letter-spacing: 2.2px; fill: #e9e9ed; }
+    .layers { font-family: "Inter", Arial, sans-serif; font-weight: 400; font-size: 12px; letter-spacing: 0.3px; fill: #e9e9ed; fill-opacity: 0.55; }
+  </style>
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c1f30"/><stop offset="1" stop-color="#0e0f18"/></linearGradient>
+    <radialGradient id="glow" cx="0.81" cy="0.52" r="0.35"><stop offset="0" stop-color="#9184d9" stop-opacity="0.18"/><stop offset="1" stop-color="#9184d9" stop-opacity="0"/></radialGradient>
+    <g id="page"><path d="M444 92 h30 l14 14 v50 h-44 z" stroke-linejoin="round"/><path d="M474 92 v14 h14" fill="none" stroke-linejoin="round"/></g>
+  </defs>
+  <rect width="760" height="240" rx="14" fill="url(#night)"/>
+  <rect width="760" height="240" rx="14" fill="url(#glow)"/>
+  <text class="wordmark" x="40" y="106">DECLARATIVE</text>
+  <text class="wordmark" x="40" y="136">DATA PLATFORM</text>
+  <text class="layers" x="40" y="162">ingest · conform · integrate · serve</text>
+  <g fill="#232532" stroke="#e9e9ed" stroke-opacity="0.35" stroke-width="1.2">
+    <rect x="330" y="86" width="22" height="22" rx="4"/><rect x="360" y="82" width="22" height="22" rx="4"/><rect x="388" y="90" width="22" height="22" rx="4"/><rect x="334" y="114" width="22" height="22" rx="4"/><rect x="363" y="117" width="22" height="22" rx="4"/><rect x="392" y="118" width="22" height="22" rx="4"/><rect x="326" y="144" width="22" height="22" rx="4"/><rect x="358" y="148" width="22" height="22" rx="4"/><rect x="390" y="146" width="22" height="22" rx="4"/>
+  </g>
+  <g transform="translate(21 0)" fill="#232532" stroke="#e9e9ed" stroke-width="1.2">
+    <use href="#page" transform="translate(7 -7)" stroke-opacity="0.2"/>
+    <use href="#page" stroke-opacity="0.28"/>
+    <g transform="translate(-7 7)">
+      <use href="#page" stroke-opacity="0.35"/>
+      <g stroke-width="2.6" stroke-linecap="round">
+        <g stroke-opacity="0.55"><line x1="452" y1="112" x2="462" y2="112"/><line x1="458" y1="122" x2="465" y2="122"/><line x1="458" y1="132" x2="464" y2="132"/><line x1="452" y1="142" x2="461" y2="142"/></g>
+        <g stroke-opacity="0.28"><line x1="467" y1="112" x2="472" y2="112"/><line x1="470" y1="122" x2="481" y2="122"/><line x1="469" y1="132" x2="478" y2="132"/><line x1="466" y1="142" x2="474" y2="142"/></g>
+      </g>
+    </g>
+  </g>
+  <g stroke="#e9e9ed" stroke-opacity="0.35" stroke-width="1.2">
+    <line x1="626" y1="125" x2="654" y2="125"/><line x1="604" y1="125" x2="576" y2="125"/><line x1="615" y1="136" x2="615" y2="164"/><line x1="615" y1="114" x2="615" y2="86"/><line x1="624.83" y1="134.83" x2="640.57" y2="150.57"/><line x1="605.17" y1="134.83" x2="589.43" y2="150.57"/><line x1="605.17" y1="115.17" x2="589.43" y2="99.43"/><line x1="624.83" y1="115.17" x2="640.57" y2="99.43"/>
+  </g>
+  <g fill="#232532" stroke="#e9e9ed" stroke-opacity="0.35" stroke-width="1.2">
+    <rect x="654" y="114" width="22" height="22" rx="4"/><rect x="639.4" y="149.4" width="22" height="22" rx="4"/><rect x="604" y="164" width="22" height="22" rx="4"/><rect x="568.6" y="149.4" width="22" height="22" rx="4"/><rect x="554" y="114" width="22" height="22" rx="4"/><rect x="568.6" y="78.6" width="22" height="22" rx="4"/><rect x="604" y="64" width="22" height="22" rx="4"/><rect x="639.4" y="78.6" width="22" height="22" rx="4"/>
+  </g>
+  <rect x="604" y="114" width="22" height="22" rx="4" fill="#3d3a64" stroke="#9184d9" stroke-width="1.4"/>
+  <circle cx="615" cy="125" r="3.5" fill="#9184d9"/>
+  <g fill="#e9e9ed">
+    <circle cx="426" cy="125" r="2" fill-opacity="0.18"/>
+    <circle cx="436" cy="125" r="2" fill-opacity="0.32"/>
+    <circle cx="446" cy="125" r="2" fill-opacity="0.46"/>
+    <circle cx="525" cy="125" r="2" fill-opacity="0.5"/>
+    <circle cx="535" cy="125" r="2" fill-opacity="0.65"/>
+    <circle cx="545" cy="125" r="2" fill-opacity="0.8"/>
+  </g>
+</svg>

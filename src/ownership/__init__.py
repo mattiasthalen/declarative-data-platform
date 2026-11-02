@@ -1,7 +1,7 @@
 """Generated package folders, and which generator owns them (ADR-0012).
 
-A generator owns a folder under ``models/<layer>/`` only when the folder holds a README.md
-that the generator wrote. It rewrites its folders whole: files it no longer emits are
+A generator owns a folder under ``models/<layer>/``, or a folder at the repo root such as
+``assets/``, only when the folder holds a README.md that the generator wrote. It rewrites its folders whole: files it no longer emits are
 removed, and a folder it no longer emits is removed with them. It refuses, before writing
 anything, any folder it would write that has no README or another generator's.
 
@@ -51,12 +51,9 @@ def owner(folder: Path) -> str | None:
 
 
 def owned(root: Path, generator: str) -> set[Path]:
-    """Every package folder under models/ that ``generator`` owns."""
-    return {
-        readme.parent.relative_to(root)
-        for readme in (root / MODELS).glob(f"*/*/{MARKER}")
-        if owner(readme.parent) == generator
-    }
+    """Every package folder under models/, and every folder at the repo root, that ``generator`` owns."""
+    readmes = [*(root / MODELS).glob(f"*/*/{MARKER}"), *root.glob(f"*/{MARKER}")]
+    return {readme.parent.relative_to(root) for readme in readmes if owner(readme.parent) == generator}
 
 
 @dataclass(frozen=True)

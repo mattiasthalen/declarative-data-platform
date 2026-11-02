@@ -1,15 +1,17 @@
-"""The README's hero artwork, `docs/hero.svg`, and the README's opening (story #37: AC1-AC7,
-AC11's regions, EC1-EC3, EC5).
+"""The README's hero artwork, `assets/hero.svg`, and the README's opening (story #37: AC1-AC7,
+AC11's regions, EC1-EC3, EC5; story #38: AC3, AC4, AC10's README, EC5).
 
-The look of the drawing and how GitHub shows it are judged, not run (AC8-AC10, `tests/judged.md`).
-These tests hold what a command can: the README opens with the image, the first sentence changed
-and nothing below it, and the SVG is self-contained, carries both its fonts, covers its text and
-stays small.
+The look of the drawing and how GitHub shows it are judged, not run (#37's AC8-AC10, #38's AC8 and
+AC9, `tests/judged.md`). These tests hold what a command can: the README opens with the image, the
+first sentence changed and nothing below it, and the SVG is self-contained, carries both its fonts
+and their licence, covers its text and stays small. Story #38 moved the file from `docs/` to
+`assets/`, which the artwork generator owns; its motion is held by `test_hero_motion.py`.
 
-- ``-k hero_readme``: AC1, AC2, EC1. ``-k hero_svg``: AC3, AC4, AC7, EC5.
-  ``-k hero_fonts``: AC5, AC6, EC2, EC3. ``-k hero_erd_untouched``: AC2's unchanged rest and
-  AC11's regions, against ``HERO_BASE`` (a commit of ``main`` from before the story); skipped
-  when it is unset, since ``main`` moves on after the story merges.
+- ``-k hero_readme``: #37's AC1, AC2, EC1; #38's AC3. ``-k hero_svg``: #37's AC3, AC4, AC7, EC5;
+  #38's AC4, EC5. ``-k hero_fonts``: #37's AC5, AC6, EC2, EC3. ``-k hero_erd_untouched``: AC2's
+  unchanged rest and AC11's regions, against ``HERO_BASE`` (a commit of ``main`` from before the
+  story: 92a1fa2 for #37, 4a8b54c for #38, where only line 1 may differ); skipped when it is
+  unset, since ``main`` moves on after the story merges.
 - ``fontTools`` is imported where it is used, so a missing ``fonttools`` (or ``brotli``, for
   WOFF2) fails these tests rather than skipping them.
 """
@@ -31,7 +33,9 @@ import erd
 from erd import LAYERS
 
 README = REPO / "README.md"
-HERO = REPO / "docs" / "hero.svg"
+HERO = REPO / "assets" / "hero.svg"
+OLD_HERO = "docs/hero.svg"
+LICENCE = "SIL OPEN FONT LICENSE Version 1.1"
 ALT = "Declarative Data Platform: raw data, a handful of declarations, a star schema."
 SVG = "http://www.w3.org/2000/svg"
 XLINK = "http://www.w3.org/1999/xlink"
@@ -48,7 +52,7 @@ def local(tag: str) -> str:
 
 
 def hero() -> ET.Element:
-    assert HERO.is_file(), "docs/hero.svg does not exist"
+    assert HERO.is_file(), "assets/hero.svg does not exist"
     return ET.parse(HERO).getroot()
 
 
@@ -90,8 +94,8 @@ def opening_block() -> re.Match:
 
 def test_hero_readme_opens_with_image():
     """AC1, EC1: the README's first non-blank content is one centred block holding one image:
-    src docs/hero.svg, width 100%, alt the [8] text, which reads as the opening line if the image
-    cannot load."""
+    src assets/hero.svg (#38's AC3), width 100%, alt the [8] text, which reads as the opening line
+    if the image cannot load."""
     block = opening_block()
     (outer,) = parse_html(f"<{block.group(1)}{block.group(2)}>").tags
     assert (outer[1].get("align") or "").lower() == "center", (
@@ -105,9 +109,32 @@ def test_hero_readme_opens_with_image():
     stray = "".join(inner.data).strip()
     assert not stray, f"README.md's opening block holds text besides the image: {stray!r}"
     (img,) = images
-    assert img.get("src") == "docs/hero.svg", f"the hero's src is {img.get('src')!r}, expected 'docs/hero.svg'"
+    assert img.get("src") == "assets/hero.svg", f"the hero's src is {img.get('src')!r}, expected 'assets/hero.svg'"
     assert img.get("width") == "100%", f"the hero's width is {img.get('width')!r}, expected '100%'"
     assert img.get("alt") == ALT, f"the hero's alt is {img.get('alt')!r}, expected {ALT!r}"
+
+
+def test_hero_readme_no_old_path():
+    """#38's AC3: `docs/hero.svg` no longer exists, and no tracked file names it, except the
+    test modules (which may name it to hold it absent) and the ADRs (which record history)."""
+    assert not (REPO / OLD_HERO).exists(), f"{OLD_HERO} still exists; the hero lives at assets/hero.svg"
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, check=True
+    ).stdout.decode("utf-8").split("\0")
+    naming = []
+    for name in filter(None, tracked):
+        if name.startswith("docs/adr/") or (name.startswith("tests/") and name.endswith(".py")):
+            continue
+        path = REPO / name
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        lines = [f"{name}:{n}" for n, line in enumerate(text.splitlines(), 1) if OLD_HERO in line]
+        naming.extend(lines)
+    assert not naming, f"tracked files still name {OLD_HERO}:\n" + "\n".join(naming)
 
 
 def test_hero_readme_first_paragraph():
@@ -135,7 +162,7 @@ def test_hero_erd_untouched():
     byte for byte the base's, and so are the three erd: regions."""
     base = os.environ.get("HERO_BASE")
     if not base:
-        pytest.skip("HERO_BASE is unset: set it to main's commit from before story #37 (92a1fa2)")
+        pytest.skip("HERO_BASE is unset: set it to main's commit from before the story (92a1fa2 for #37, 4a8b54c for #38)")
     # git would read a leading "-" as an option and a ":" or space as part of the path.
     assert re.fullmatch(r"[^\s:-][^\s:]*", base), f"HERO_BASE={base!r} is not a plain revision"
     before = subprocess.run(
@@ -151,6 +178,11 @@ def test_hero_erd_untouched():
         assert erd.region(after, layer).text == erd.region(before, layer).text, (
             f"README.md's erd:{layer} region differs from {base}'s"
         )
+    # A base that already opens with the hero (#38's 4a8b54c) may differ on line 1 only (AC10).
+    if before.lstrip().startswith("<p align=\"center\"><img"):
+        assert after.splitlines(keepends=True)[1:] == before.splitlines(keepends=True)[1:], (
+            f"README.md differs from {base} below line 1"
+        )
 
 
 # --------------------------------------------------------------------------- the SVG's form
@@ -162,18 +194,18 @@ def test_hero_svg_form():
     """AC3: the SVG parses; its root is <svg> with a viewBox and no fixed-unit width or height;
     its first child is <title> holding the [8] text."""
     root = hero()
-    assert root.tag == f"{{{SVG}}}svg", f"docs/hero.svg's root is {root.tag!r}, expected an SVG <svg>"
-    assert root.get("viewBox", "").split(), "docs/hero.svg's <svg> has no viewBox"
+    assert root.tag == f"{{{SVG}}}svg", f"assets/hero.svg's root is {root.tag!r}, expected an SVG <svg>"
+    assert root.get("viewBox", "").split(), "assets/hero.svg's <svg> has no viewBox"
     for name in ("width", "height"):
         value = root.get(name)
         assert value is None or not FIXED.match(value), (
-            f"docs/hero.svg's <svg> has a fixed {name}={value!r}; it must scale by its viewBox"
+            f"assets/hero.svg's <svg> has a fixed {name}={value!r}; it must scale by its viewBox"
         )
     children = list(root)
-    assert children, "docs/hero.svg's <svg> is empty"
+    assert children, "assets/hero.svg's <svg> is empty"
     first = children[0]
-    assert first.tag == f"{{{SVG}}}title", f"docs/hero.svg's first child is {first.tag!r}, expected <title>"
-    assert (first.text or "").strip() == ALT, f"docs/hero.svg's <title> is {first.text!r}, expected {ALT!r}"
+    assert first.tag == f"{{{SVG}}}title", f"assets/hero.svg's first child is {first.tag!r}, expected <title>"
+    assert (first.text or "").strip() == ALT, f"assets/hero.svg's <title> is {first.text!r}, expected {ALT!r}"
 
 
 URL = re.compile(r"""url\(\s*(['"]?)(.*?)\1\s*\)""", re.DOTALL | re.IGNORECASE)
@@ -231,14 +263,26 @@ def test_hero_svg_fetches_nothing():
         offending.append(f"<style> {imported.group(0)[:80]}")
     for escape in re.finditer(r".{0,20}\\.{0,20}", css):
         offending.append(f"<style> CSS escape {escape.group(0)!r}")
-    assert not offending, "docs/hero.svg fetches from outside:\n" + "\n".join(offending)
+    assert not offending, "assets/hero.svg fetches from outside:\n" + "\n".join(offending)
+
+
+def test_hero_svg_carries_licence():
+    """#38's AC4: the fonts' licence travels with them: the OFL text, from its title line, is in
+    the file."""
+    assert HERO.is_file(), "assets/hero.svg does not exist"
+    text = HERO.read_text(encoding="utf-8")
+    assert LICENCE in text, f"assets/hero.svg does not carry the font licence ({LICENCE!r})"
+    for clause in ("PERMISSION & CONDITIONS", "TERMINATION", "DISCLAIMER"):
+        assert clause in text or clause.replace("&", "&amp;") in text, (
+            f"assets/hero.svg's licence text lacks its {clause!r} section: the OFL must be carried whole"
+        )
 
 
 def test_hero_svg_size():
-    """AC7: docs/hero.svg is under 60 KB."""
-    assert HERO.is_file(), "docs/hero.svg does not exist"
+    """AC7: assets/hero.svg is under 60 KB."""
+    assert HERO.is_file(), "assets/hero.svg does not exist"
     size = os.path.getsize(HERO)
-    assert size < 60 * 1024, f"docs/hero.svg is {size} bytes, over 60 KB ({60 * 1024})"
+    assert size < 60 * 1024, f"assets/hero.svg is {size} bytes, over 60 KB ({60 * 1024})"
 
 
 # --------------------------------------------------------------------------- the SVG's fonts
@@ -264,7 +308,7 @@ def embedded_fonts(root: ET.Element) -> dict[str, tuple[str, bytes]]:
         family = declaration(body, "font-family")
         assert family, f"an @font-face rule names no font-family: {body[:80]!r}"
         family = first_family(family)
-        assert family not in fonts, f"docs/hero.svg has more than one @font-face for {family!r}"
+        assert family not in fonts, f"assets/hero.svg has more than one @font-face for {family!r}"
         weight = (declaration(body, "font-weight") or "400").strip()
         src = URL.search(body)
         assert src, f"the @font-face for {family!r} has no src url(...)"
@@ -353,7 +397,7 @@ def test_hero_fonts_embedded():
     valid font; the wordmark's <text> uses Spectral and the layer line's uses Inter."""
     root = hero()
     fonts = embedded_fonts(root)
-    assert sorted(fonts) == sorted(FONTS), f"docs/hero.svg embeds {sorted(fonts)}, expected exactly {sorted(FONTS)}"
+    assert sorted(fonts) == sorted(FONTS), f"assets/hero.svg embeds {sorted(fonts)}, expected exactly {sorted(FONTS)}"
     for family, weight in FONTS.items():
         assert fonts[family][0] == weight, f"the @font-face for {family} has weight {fonts[family][0]}, expected {weight}"
         font = open_font(family, fonts[family][1])
@@ -372,7 +416,7 @@ def test_hero_fonts_embedded():
             )
     words = " ".join(" ".join(chars.split()) for chars, _, _ in runs)
     for phrase in ("DECLARATIVE", "DATA PLATFORM"):
-        assert phrase in words.upper(), f"docs/hero.svg's text does not hold the wordmark {phrase!r}"
+        assert phrase in words.upper(), f"assets/hero.svg's text does not hold the wordmark {phrase!r}"
     for chars, family, _ in runs:
         normal = " ".join(chars.split())
         if re.search(r"DECLARATIVE|DATA|PLATFORM", normal, re.IGNORECASE) and "·" not in normal:
@@ -381,7 +425,7 @@ def test_hero_fonts_embedded():
         el for el in text_elements(root)
         if all(w in " ".join("".join(el.itertext()).split()) for w in ("ingest", "conform", "integrate", "serve"))
     ]
-    assert layer_lines, "docs/hero.svg has no <text> holding the layer line 'ingest · conform · integrate · serve'"
+    assert layer_lines, "assets/hero.svg has no <text> holding the layer line 'ingest · conform · integrate · serve'"
     for el in layer_lines:
         line = " ".join("".join(el.itertext()).split())
         assert line == "ingest · conform · integrate · serve", f"the layer line reads {line!r}"
@@ -406,7 +450,7 @@ def test_hero_fonts_cover_text():
             if char.isspace():
                 continue
             if family not in cmaps:
-                missing.append(f"{char!r} (U+{ord(char):04X}) is set in {family!r}, which docs/hero.svg does not embed")
+                missing.append(f"{char!r} (U+{ord(char):04X}) is set in {family!r}, which assets/hero.svg does not embed")
             elif ord(char) not in cmaps[family]:
                 missing.append(f"{char!r} (U+{ord(char):04X}) is not in the embedded {family} font")
-    assert not missing, "docs/hero.svg's text falls outside its fonts:\n" + "\n".join(sorted(set(missing)))
+    assert not missing, "assets/hero.svg's text falls outside its fonts:\n" + "\n".join(sorted(set(missing)))
