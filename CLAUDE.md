@@ -33,8 +33,9 @@ Products loads into the lake; it is not ingest, which names no resource (ADR-001
 - **Generated output is committed.** After changing a contract, the model, a mapping or a
   generator, run `uv run task generate` and commit the result with the change;
   `uv run task check` fails otherwise, naming the file, and CI requires it (ADR-0014).
-- **Never edit a generated folder by hand.** A folder under `models/` whose `README.md` a
-  generator wrote is that generator's; change the declarations and regenerate (ADR-0012).
+- **Never edit a generated folder by hand.** A folder under `models/`, or `assets/`, whose
+  `README.md` a generator wrote is that generator's; change what it is written from (the
+  declarations, or `src/artwork/` for `assets/`) and regenerate (ADR-0012, ADR-0032).
   The same holds between the `erd:<layer>` markers in the root README (ADR-0028).
 - **`__` separates concerns in every name**: schemas (`serve__uss`), models
   (`adventure_works__products`), columns (`_dlt__load_id`).
@@ -44,7 +45,7 @@ Products loads into the lake; it is not ingest, which names no resource (ADR-001
 ## Proving a change
 
 ```sh
-uv run task check   # drift: committed models that differ from the declarations
+uv run task check   # drift: committed generated output that differs from its generator
 uv run pytest
 ```
 

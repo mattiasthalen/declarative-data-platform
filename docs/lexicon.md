@@ -34,6 +34,6 @@ The words someone needs defined to talk about using or developing the platform. 
 
 **not applicable** — A ghost member for a relationship that does not apply to a row: a null created when *the bridge* unions stages that lack that key. Distinct from *not available*.
 
-**drift** — Committed generated output that differs from what the declarations produce now: a file `generate` would rewrite, add or remove, or an *owned region* it would rewrite. `--check` reports it, and the ruleset on `main` refuses to merge it while CI's `check` job fails. See [ADR-0013](adr/0013-check-generated-output-byte-for-byte-through-the-writer-that-owns-it.md).
+**drift** — Committed generated output that differs from what its generator produces now, from the declarations or, for the README's artwork, from the generator's own code: a file `generate` would rewrite, add or remove, or an *owned region* it would rewrite. `--check` reports it, and the ruleset on `main` refuses to merge it while CI's `check` job fails. See [ADR-0013](adr/0013-check-generated-output-byte-for-byte-through-the-writer-that-owns-it.md).
 
 **owned region** — A stretch of a hand-written file, between a begin and an end marker, that one generator rewrites and `--check` compares; everything outside it belongs to whoever writes the file. See [ADR-0028](adr/0028-let-a-generator-own-a-marked-region-of-a-hand-written-file.md).
