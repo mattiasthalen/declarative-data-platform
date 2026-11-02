@@ -19,7 +19,7 @@ is the time-traveling perspective tPR_Product (story #5).
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 import yaml
@@ -43,16 +43,20 @@ from harness import (
     integrity_violations,
     latest,
     load_id,
+    naive_utc,
     pit,
     pit_columns,
     posit,
     posited,
+    posited_at,
     posits,
     pr_id,
     product,
     q,
     require,
+    same_rows,
     tail,
+    timestamp,
     tt,
     tt_columns,
 )
@@ -1179,26 +1183,14 @@ def test_serve_catches_up_after_skipped_build(lifecycle):
 # tPR_Product(changingTimepoint, positingTimepoint) is pPR_Product as known at the positing time K:
 # an annex row counts when its PositedAt <= K, a posit when its ChangedAt <= T; per posit its latest
 # annex row known at K decides whether it holds; every anchor row is returned. PositedAt is a load's
-# _dlt__extracted_at, so K is named by load: posited(L3) is L3's PositedAt, posited(L3, -1) one
+# _dlt__extracted_at, so K is named by load: posited_at(L3) is L3's PositedAt, posited_at(L3, -1) one
 # microsecond before it.
 
-T0 = at(D0)
+T0 = datetime.fromisoformat(D0)
 FAR = "date '9999-12-31'"
 DAY_US = 86_400_000_000
 # The last load each story build had seen.
 LATEST_LOAD = {"s1": L1, "s2": L1, "s3": L2, "s4": L3, "s5": L5, "s6": L5, "s7": L5}
-
-
-def _moment_of(literal: str) -> datetime:
-    """The naive datetime a ``date '...'`` or ``timestamp '...'`` literal names."""
-    return datetime.fromisoformat(literal.split("'")[1])
-
-
-def _epoch_us_of(value: datetime) -> int:
-    """A PositedAt as epoch microseconds, as ``epoch_us`` gives a load's."""
-    naive = value.replace(tzinfo=None) if value.tzinfo is None else value.astimezone(UTC).replace(tzinfo=None)
-    delta = naive - datetime(1970, 1, 1)
-    return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
 
 
 def _tt_value(snap: Snapshot, rows: dict, number: str, mnemonic: str):
@@ -1207,32 +1199,21 @@ def _tt_value(snap: Snapshot, rows: dict, number: str, mnemonic: str):
     return _text(mnemonic, record[attribute(mnemonic)])
 
 
-def _known_at_holds(rows: dict, changing: str, positing: str) -> list[str]:
-    """What breaks crt's rules in tPR's rows: a value changed after T, posited after K, or not reliable positor 0."""
-    t, k = _moment_of(changing), _moment_of(positing)
+def _known_at_holds(rows: dict, t: datetime, k: datetime) -> list[str]:
+    """What breaks crt's rules in tPR(T, K)'s rows: a value changed after T, posited after K, or not reliable positor 0."""
     broken = []
     for record in rows.values():
         for m in ATTRIBUTES:
             if record[attribute(m)] is None and record[f"PR_{m}_ChangedAt"] is None:
                 continue
             changed, stated = record[f"PR_{m}_ChangedAt"], record[f"PR_{m}_PositedAt"]
-            if changed is None or changed.replace(tzinfo=None) > t:
+            if changed is None or naive_utc(changed) > t:
                 broken.append(f"PR_ID {record['PR_ID']} {attribute(m)} from ChangedAt {changed} > T {t}")
-            if stated is None or stated.replace(tzinfo=None) > k:
+            if stated is None or naive_utc(stated) > k:
                 broken.append(f"PR_ID {record['PR_ID']} {attribute(m)} posited at {stated} > K {k}")
             if (record[f"PR_{m}_Positor"], record[f"PR_{m}_Reliability"]) != (0, 1):
                 broken.append(f"PR_ID {record['PR_ID']} {attribute(m)} is not reliable positor 0: {record}")
     return broken
-
-
-def _same_rows(snap: Snapshot, one: str, other: str) -> list[str]:
-    """Both ways of ``except all`` between two queries, and their counts: empty when they hold the same rows."""
-    found = []
-    for a, b in ((one, other), (other, one)):
-        extra = snap.sql(f"select count(*) from ({a} except all {b})")[0][0]
-        if extra:
-            found.append(f"`{a}` has {extra} rows `{b}` lacks")
-    return found
 
 
 def test_tt_shape(story):
@@ -1260,15 +1241,15 @@ def test_tt_correction(story):
     known at none of those K."""
     snap = story.snap("s4")
     cases = [
-        (posited(L2), "Alpha"),
-        (posited(L3, -1), "Alpha"),
-        (posited(L3), "Alpha Prime"),
-        (posited(L3, DAY_US), "Alpha Prime"),
+        (posited_at(L2), "Alpha"),
+        (posited_at(L3, -1), "Alpha"),
+        (posited_at(L3), "Alpha Prime"),
+        (posited_at(L3, DAY_US), "Alpha Prime"),
     ]
     wrong, sell_starts = [], []
-    sst = [c for c in tt_columns(snap, T0, posited(L3)) if c.startswith("PR_SST_")]
+    sst = [c for c in tt_columns(snap, timestamp(T0), posited(L3)) if c.startswith("PR_SST_")]
     for positing, expected in cases:
-        rows = tt(snap, T0, positing)
+        rows = tt(snap, timestamp(T0), timestamp(positing))
         got = _tt_value(snap, rows, "SN-0002", "NAM")
         if got != expected:
             wrong.append(f"tPR(T0, {positing}) SN-0002 name: {got!r}, expected {expected!r}")
@@ -1280,8 +1261,8 @@ def test_tt_correction(story):
     assert not wrong, "\n".join(wrong)
     assert all(s == sell_starts[0] for s in sell_starts), f"SX-0005's sell start moves with K: {sell_starts}"
 
-    corrected = tt(snap, T0, posited(L3))[pr_id(snap, "SN-0002")]
-    assert _epoch_us_of(corrected["PR_NAM_PositedAt"]) == epoch_us(L3), corrected
+    corrected = tt(snap, timestamp(T0), posited(L3))[pr_id(snap, "SN-0002")]
+    assert naive_utc(corrected["PR_NAM_PositedAt"]) == posited_at(L3), corrected
 
 
 def test_tt_retraction(story):
@@ -1297,7 +1278,7 @@ def test_tt_retraction(story):
     ]
     wrong = []
     for positing, expected in cases:
-        rows = tt(snap, T0, positing)
+        rows = tt(snap, timestamp(T0), positing)
         got = _tt_value(snap, rows, "SE-0003", "SEN")
         if got != expected:
             wrong.append(f"tPR(T0, {positing}) SE-0003 sell end: {got!r}, expected {expected!r}")
@@ -1329,7 +1310,7 @@ def test_tt_equals_pit(story):
             assert count > 0, f"{label}: pPR({when}) is empty"
             for positing in (FAR, posited(LATEST_LOAD[label])):
                 known = f"select * from {TT}({at(when)}, {positing})"
-                wrong += [f"{label}: {w}" for w in _same_rows(snap, known, point)]
+                wrong += [f"{label}: {w}" for w in same_rows(snap, known, point)]
     assert not wrong, "\n".join(wrong[:20])
 
 
@@ -1338,11 +1319,11 @@ def test_tt_before_first_load(story):
     attribute column null; an identity first posited in L3 is returned, all null, as known before L3."""
     for label, positing in (("s1", posited(L1, -1)), ("s5", posited(L1, -1)), ("s5", "date '2000-01-01'")):
         snap = story.snap(label)
-        rows = tt(snap, T0, positing)
+        rows = tt(snap, timestamp(T0), positing)
         identities = {r[0] for r in snap.sql("select PR_ID from integrate.PR_Product")}
         assert identities, f"{label}: PR_Product is empty"
         assert set(rows) == identities, f"{label}: tPR(T0, {positing}) returns {sorted(rows)}, PR_Product holds {sorted(identities)}"
-        columns = _attribute_columns(tt_columns(snap, T0, positing))
+        columns = _attribute_columns(tt_columns(snap, timestamp(T0), positing))
         held = [(pid, c, r[c]) for pid, r in rows.items() for c in columns if r[c] is not None]
         assert not held, f"{label}: tPR(T0, {positing}) holds values: {held[:10]}"
 
@@ -1359,24 +1340,24 @@ def test_tt_one_build_two_loads(story):
     """Story #5 EC3: loads 4 and 5 applied in one build keep their own PositedAts: in s5, SA-0006's colour at
     2014-04-01 is Blue as known before L4, Yellow between L4 and L5, and Blue from L5 on."""
     snap = story.snap("s5")
-    when = at(D2)
+    when = datetime.fromisoformat(D2)
     cases = [
-        (posited(L4, -1), "Blue"),
-        (posited(L4), "Yellow"),
-        (posited(L5, -1), "Yellow"),
-        (posited(L5), "Blue"),
-        (FAR, "Blue"),
+        (posited_at(L4, -1), "Blue"),
+        (posited_at(L4), "Yellow"),
+        (posited_at(L5, -1), "Yellow"),
+        (posited_at(L5), "Blue"),
+        (datetime(9999, 12, 31), "Blue"),
     ]
     wrong = []
     for positing, expected in cases:
-        rows = tt(snap, when, positing)
+        rows = tt(snap, timestamp(when), timestamp(positing))
         got = _tt_value(snap, rows, "SA-0006", "COL")
         if got != expected:
             wrong.append(f"tPR({D2}, {positing}) SA-0006 colour: {got!r}, expected {expected!r}")
         wrong += _known_at_holds(rows, when, positing)
     assert not wrong, "\n".join(wrong)
-    yellow = tt(snap, when, posited(L5, -1))[pr_id(snap, "SA-0006")]
-    assert _epoch_us_of(yellow["PR_COL_PositedAt"]) == epoch_us(L4), yellow
+    yellow = tt(snap, timestamp(when), posited(L5, -1))[pr_id(snap, "SA-0006")]
+    assert naive_utc(yellow["PR_COL_PositedAt"]) == posited_at(L4), yellow
 
 
 # --------------------------------------------------------------------------- story #5 AC5
