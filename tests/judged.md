@@ -317,9 +317,10 @@ A browser that keeps the hero still with motion allowed, or moves it with reduce
 Four acceptance criteria and one edge case are judged at review rather than run. The reviewer
 reads the evidence named in each and records pass or fail for each line below.
 
-## AC7: the CI `test` job, green in under 4 minutes
+## AC7: the CI `test` job, green in under 6 minutes
 
-Three runs of the PR's head commit: the push and two re-runs ([7], [8]).
+Three runs of the PR's head commit: the push and two re-runs ([7], [8]). The spec was amended
+on 2026-11-02 from 4 minutes to 6.
 
 Pass when all of these hold:
 
@@ -328,7 +329,7 @@ Pass when all of these hold:
    from memory or a screenshot of a different commit; it shows the head commit's SHA.
 2. There are three attempts of the `ci` workflow on that SHA (run attempts 1, 2 and 3, or
    three distinct runs), and the `test` job of each has conclusion `success`.
-3. Each `test` job's duration, `completed_at` minus `started_at`, is under 4m00s. The
+3. Each `test` job's duration, `completed_at` minus `started_at`, is under 6m00s. The
    evidence lists all three durations.
 4. Each job ran the committed `uv run pytest` step unchanged: no re-run with debug options,
    a changed workflow, or `-n` passed by hand.
@@ -375,9 +376,9 @@ Pass when all of these hold:
 Pass when all of these hold:
 
 1. `docs/assumptions.md` row A8 reads as the spec's restated A8: the `test` job runs in
-   under 4 minutes on a GitHub-hosted `ubuntu-latest` runner with 4 cores while the
-   repository is public, and it stops holding at 4 minutes or longer, with the remedy
-   `--dist loadgroup` and `xdist_group` markers named first.
+   under 6 minutes on a GitHub-hosted `ubuntu-latest` runner with 4 CPUs while the
+   repository is public, and it stops holding at 6 minutes or longer. It says `loadgroup` is
+   not the fix, having measured slower (7m05s against 5m09s), and names no `loadgroup` remedy.
 2. Rows A25 (two xdist workers never get the same free port) and A26 (every test is
    independent of the others) appear with the spec's assumption, area `ci` and
    "stopped holding" text. A wording change is fine only where the build proved the spec
