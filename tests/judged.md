@@ -317,22 +317,29 @@ A browser that keeps the hero still with motion allowed, or moves it with reduce
 Four acceptance criteria and one edge case are judged at review rather than run. The reviewer
 reads the evidence named in each and records pass or fail for each line below.
 
-## AC7: the CI `test` job, green in under 6 minutes
+## AC7: the CI `test` job, green in at most half the serial time
 
-Three runs of the PR's head commit: the push and two re-runs ([7], [8]). The spec was amended
-on 2026-11-02 from 4 minutes to 6.
+Three runs of the PR's head commit: the push and two re-runs ([7], [8]), each set against the
+serial `test` job of the PR's base commit: the `main` push run of that base SHA, which ran
+before `-n auto` existed. The spec was amended on 2026-11-02 from 4 minutes to 6, and then
+from 6 minutes to this ratio (Mattias, decision card 09:14Z).
 
 Pass when all of these hold:
 
 1. The evidence reads the runs from the GitHub Actions API (`gh run list --commit <sha>`,
    `gh run view <id> --json jobs`, or `/repos/{owner}/{repo}/actions/runs/{id}/jobs`), not
-   from memory or a screenshot of a different commit; it shows the head commit's SHA.
-2. There are three attempts of the `ci` workflow on that SHA (run attempts 1, 2 and 3, or
+   from memory or a screenshot of a different commit. It does so for the head runs and for
+   the base's `main` run, and shows both SHAs; the base SHA is the PR's base commit, and its
+   run is a `push` run on `main`.
+2. There are three attempts of the `ci` workflow on the head SHA (run attempts 1, 2 and 3, or
    three distinct runs), and the `test` job of each has conclusion `success`.
-3. Each `test` job's duration, `completed_at` minus `started_at`, is under 6m00s. The
-   evidence lists all three durations.
-4. Each job ran the committed `uv run pytest` step unchanged: no re-run with debug options,
-   a changed workflow, or `-n` passed by hand.
+3. The `test` job of the base's `main` run has conclusion `success`, and the evidence states
+   its duration, `completed_at` minus `started_at`.
+4. Each head `test` job's duration, `completed_at` minus `started_at`, is at most half the
+   base's duration. The evidence lists all three head durations, each with its ratio to the
+   base's duration.
+5. Each head job ran the committed `uv run pytest` step unchanged: no re-run with debug
+   options, a changed workflow, or `-n` passed by hand.
 
 ## AC8: five full runs in a row, all green
 
@@ -375,19 +382,24 @@ Pass when all of these hold:
 
 Pass when all of these hold:
 
-1. `docs/assumptions.md` row A8 reads as the spec's restated A8: the `test` job runs in
-   under 6 minutes on a GitHub-hosted `ubuntu-latest` runner with 4 CPUs while the
-   repository is public, and it stops holding at 6 minutes or longer. It says `loadgroup` is
-   not the fix, having measured slower (7m05s against 5m09s), and names no `loadgroup` remedy.
+1. `docs/assumptions.md` row A8 reads as the spec's restated A8: the `test` job, run in
+   parallel, takes at most half as long as the same suite run serially (`-n 0`), on a
+   GitHub-hosted `ubuntu-latest` runner with 4 CPUs while the repository is public. It stops
+   holding when the job takes more than half the serial time, or when `psutil` enters
+   `uv.lock`. It says `loadgroup` is not the fix, having measured slower in the sandbox
+   (7m05s against 4m54s), and names no `loadgroup` remedy. It says that for story #35 the
+   serial time is its base's `test` job on `main`, the last one run before `-n auto`. The
+   standing wording does not tie the serial time to a `main` run, since `main` runs in
+   parallel once this merges.
 2. Rows A25 (two xdist workers never get the same free port) and A26 (every test is
    independent of the others) appear with the spec's assumption, area `ci` and
    "stopped holding" text. A wording change is fine only where the build proved the spec
    wrong, and the evidence says what changed.
-3. A section "Measured (2026-11-02, CI)" records the `test` job's time with `-n auto`, taken
-   from AC7's runs, beside the serial 7 min 47 s of PR #34.
-4. ADR-0014 ends with "Addendum 2026-11-02" as in the spec, with the AC7 timing and the PR
-   number filled in (no `<filled from AC7>` or `<n>` placeholder left), and its original
-   text is otherwise unchanged.
+3. A section "Measured (2026-11-02, CI)" records the head runs' `test` job times with
+   `-n auto` and the base's serial `test` job time, both taken from AC7.
+4. ADR-0014 ends with "Addendum 2026-11-02" as in the spec, with the head timing, the serial
+   base timing and the PR number (#41) filled in (no `<filled from AC7>` or `<n>`
+   placeholder left), and its original text is otherwise unchanged.
 5. ADR-0014's row in `docs/adr/README.md` is unchanged, no new ADR was added, and no other
    row of `docs/assumptions.md` changed.
 
