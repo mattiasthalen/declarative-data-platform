@@ -17,3 +17,7 @@ Rejected: tables rebuilt on every build, and views, which redo the overlap joins
 Adding an entity adds a staged bridge without touching the others.
 
 Each attribute's first value is taken to have held since `0001-01-01`, so the first version starts there and no version is all null. A question about a day before the source's first change time reads the earliest values seen (Mattias at the evidence gate, 2026-10-31). Rejected: an all-null opening version, under which every live product was empty before its only `ModifiedDate`; and starting each product at its first change, under which it is missing before it. "As known at" questions are answered in integrate, not serve.
+
+## Addendum 2026-11-01
+
+The backfill of each first value to `0001-01-01` is serve's alone. Integrate's perspectives, `lPR_Product` and the point-in-time `pPR_Product` ([ADR-0030](0030-expose-the-point-in-time-perspective-as-a-duckdb-table-macro.md)), show no value for an attribute before its first ChangedAt, as Roenbaeck's crt views do: a posit says nothing about the time before it (Mattias, 2026-11-01: "serve backfills, anchor is true"). Serve and integrate therefore agree from each attribute's first ChangedAt on; before it, serve shows the first value and integrate shows none. Rejected: backdating the first posit in integrate, because the perspective would state a value nobody posited.
