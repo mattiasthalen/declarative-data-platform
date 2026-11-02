@@ -147,6 +147,8 @@ FEED = [(426, 0.18), (436, 0.32), (446, 0.46)]
 MOVES = (RAW_HELD, GRID_OUT, ANCHOR_OUT)
 # Where each move lands: the shape the second trail reconnects to.
 LANDS = (GRID_IN, ANCHOR_IN, STAR_IN)
+# Percent of the run before a shape lands that its trail starts reconnecting: as the shape forms.
+FORMING = 4
 # Percent of the run between one dot of a wave lighting and the next, raw to shape.
 WAVE_STEP = 2
 
@@ -154,10 +156,10 @@ WAVE_STEP = 2
 def feed_points(dot: int, rest: float) -> list[tuple[float, float]]:
     """Data coming in: a pulse runs along the trail, raw to pages, until the star forms.
 
-    The pulse as each shape lands runs on into the second trail, one wave from raw to shape;
+    The pulse as each shape forms runs on into the second trail, one wave from raw to shape;
     another pulse runs halfway between them.
     """
-    synced = [land - 5 for land in LANDS]
+    synced = [land - FORMING - 6 for land in LANDS]
     starts = sorted(synced + [(a + b) / 2 for a, b in itertools.pairwise(synced)])
     points = [(0, rest)]
     for start in starts:
@@ -171,10 +173,10 @@ TRAIL = [(525, 0.5), (535, 0.65), (545, 0.8)]
 
 
 def trail_points(dot: int, rest: float) -> list[tuple[float, float]]:
-    """Dark while a shape is forming; once it lands the trail reconnects dot by dot, pages to shape."""
+    """Dark when a shape leaves; as the next one forms the trail reconnects dot by dot, pages to shape."""
     points = [(0, 0)]
     for move, land in zip(MOVES, LANDS, strict=True):
-        lit = land + 1 + WAVE_STEP * dot
+        lit = land - FORMING + WAVE_STEP * dot
         points += [(move, 0 if move == RAW_HELD else rest), (move + 1, 0), (lit, 0), (lit + 2, rest)]
     return list(dict(points + [(100, rest)]).items())
 
