@@ -11,11 +11,14 @@ snapshot of the warehouse after every build. The main story:
     s5  loads 4 and 5 together: a colour B then back to A         build
     s6  a description in anchor/model.yaml changes      generate, build
     s7  no new files                                    build --full-refresh
+
+The point-in-time perspective pPR_Product is read from the same snapshots (story #4).
 """
 
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 import pytest
 import yaml
@@ -24,11 +27,13 @@ from harness import (
     ATTRIBUTES,
     CONTRACT,
     GHOSTS,
+    PIT,
     SCHEMAS,
     Snapshot,
     Workspace,
     annex,
     annexes,
+    at,
     attribute,
     dimension_column,
     epoch_us,
@@ -36,6 +41,8 @@ from harness import (
     integrity_violations,
     latest,
     load_id,
+    pit,
+    pit_columns,
     posit,
     posits,
     pr_id,
@@ -380,12 +387,18 @@ def _anchor_rows(snap: Snapshot) -> dict[str, list[tuple]]:
 
 
 def test_full_refresh_keeps_integrate(story):
-    """F1: dbt build --full-refresh does not rebuild integrate: every anchor, posit and annex row stays as it was."""
+    """F1, story #4 EC5: dbt build --full-refresh does not rebuild integrate: every anchor, posit and annex
+    row stays as it was, and pPR_Product, recreated by it, returns the rows it returned before."""
     s6, s7 = story.snap("s6"), story.snap("s7")
     before, after = _anchor_rows(s6), _anchor_rows(s7)
     assert all(before.values()), "the story left an empty integrate table to compare"
     for table in before:
         assert after[table] == before[table], table
+    for when in (at("2000-01-01"), at(D0), at(D1), at("2014-03-15"), at("2099-01-01")):
+        query = f"select * from {PIT}({when}) order by all"
+        rows = s6.sql(query)
+        assert rows, f"pPR({when}) is empty before the full refresh"
+        assert s7.sql(query) == rows, f"pPR({when}) changed over the full refresh"
 
 
 # --------------------------------------------------------------------------- AC16, AC17, AC23
@@ -552,6 +565,182 @@ def test_change_back(story):
     assert [(v, d) for _, v, d in posits(s5, "COL", pid)] == [("Blue", D0), ("Yellow", D1), ("Blue", D2)]
     assert all(r[3] == 1 for r in annexes(s5, "COL", pid))
     assert latest(s5, "SB-0007", "COL") == "Blue"
+
+
+# --------------------------------------------------------------------------- story #4: pPR_Product
+#
+# pPR_Product(changingTimepoint) is per identity each attribute's latest reliable positor-0 posit
+# with ChangedAt at or before the changing time; before an attribute's first ChangedAt it shows no
+# value, while serve backfills the first value to 0001-01-01.
+
+# Every ChangedAt of the story lake is a midnight: M0, M1, M2 above.
+STORY_LABELS = ("s1", "s2", "s3", "s4", "s5", "s6", "s7")
+DATE_MNEMONICS = ("SST", "SEN", "DIS")
+
+
+def _text(mnemonic: str, value):
+    """An attribute value as comparable text: dates by their day, whatever type integrate keeps."""
+    if value is None:
+        return None
+    return str(value)[:10] if mnemonic in DATE_MNEMONICS else str(value)
+
+
+def _pit_value(snap: Snapshot, rows: dict, number: str, mnemonic: str):
+    record = rows.get(pr_id(snap, number))
+    assert record is not None, f"pPR has no row for {number}"
+    return _text(mnemonic, record[attribute(mnemonic)])
+
+
+def _attribute_columns(columns: list[str]) -> list[str]:
+    """pPR's columns that belong to one attribute, not to the anchor (PR_ID, Metadata_PR)."""
+    return [c for c in columns if c not in ("PR_ID", "Metadata_PR")]
+
+
+def test_pit_shape(story, business):
+    """AC1, EC4: after every build, pPR_Product runs with a timestamp, a date and current_date and returns
+    exactly lPR_Product's column names, in order; a date gives the rows of its midnight timestamp."""
+    snaps = [(label, story.snap(label)) for label in STORY_LABELS] + [("business", business)]
+    for label, snap in snaps:
+        expected = snap.columns("integrate", "lPR_Product")
+        assert expected, f"{label}: integrate has no lPR_Product to compare with"
+        for when in (at("2014-03-01 00:00:00"), "date '2014-03-01'", "current_date"):
+            assert pit_columns(snap, when) == expected, f"{label}: pPR({when}) columns differ from lPR_Product's"
+            snap.sql(f"select * from {PIT}({when})")
+    snap = story.snap("s5")
+    for day in ("2000-01-01", D0, "2014-02-28", D1, "2014-03-31", D2, "2099-01-01"):
+        as_date, as_midnight = f"{PIT}(date '{day}')", f"{PIT}({at(day + ' 00:00:00')})"
+        for one, other in ((as_date, as_midnight), (as_midnight, as_date)):
+            extra = snap.sql(f"select count(*) from (select * from {one} except all select * from {other})")
+            assert extra == [(0,)], f"{one} has rows {other} lacks"
+        assert snap.sql(f"select count(*) from {as_date}") == [(9,)], day
+
+
+def test_pit_values(story):
+    """AC2, EC2, EC3: on #1's story lake after loads 1 to 5, pPR at chosen times shows each attribute's
+    latest reliable posit with ChangedAt at or before the time, inclusive."""
+    snap = story.snap("s5")
+    cases = [
+        # A new value at a later ChangedAt; at exactly a ChangedAt the value posited then shows (EC2).
+        ("SC-0001", "COL", "2014-02-07 23:59:59", None),
+        ("SC-0001", "COL", D0, "Black"),
+        ("SC-0001", "COL", "2014-02-28 23:59:59", "Black"),
+        ("SC-0001", "COL", D1, "Red"),
+        ("SC-0001", "COL", "2099-01-01", "Red"),
+        ("SC-0001", "LIN", D1, "R"),
+        # A correction at a held ChangedAt shows the corrected value from that ChangedAt.
+        ("SN-0002", "NAM", D0, "Alpha Prime"),
+        ("SN-0002", "NAM", "2014-06-01", "Alpha Prime"),
+        # A source null retracting the only value: nothing reliable at or before the time (EC3).
+        ("SE-0003", "SEN", D0, None),
+        ("SE-0003", "SEN", "2014-06-01", None),
+        ("SE-0003", "NAM", "2014-06-01", "Ending Bike"),
+        # A product first landed in load 3, after load 1 and 2's builds, at ChangedAt M0.
+        ("SN-0009", "NAM", "2014-02-07 23:59:59", None),
+        ("SN-0009", "NAM", D0, "Newcomer"),
+        # A, B, A over three builds and over two loads in one build.
+        *[
+            (number, "COL", when, color)
+            for number in ("SB-0007", "SA-0006")
+            for when, color in (
+                (D0, "Blue"),
+                ("2014-02-28 23:59:59", "Blue"),
+                (D1, "Yellow"),
+                ("2014-03-31 23:59:59", "Yellow"),
+                (D2, "Blue"),
+                ("2099-01-01", "Blue"),
+            )
+        ],
+        # A failed cast changes nothing.
+        ("SX-0005", "SST", "2014-06-01", "2011-05-31"),
+        # Absence from a full load changes nothing.
+        ("SG-0004", "NAM", "2014-06-01", "Gone Bike"),
+        ("SS-0008", "DIS", "2014-06-01", "2015-01-01"),
+    ]
+    calls: dict[str, dict] = {}
+    wrong = []
+    for number, mnemonic, when, expected in cases:
+        rows = calls.setdefault(when, pit(snap, at(when)))
+        got = _pit_value(snap, rows, number, mnemonic)
+        if got != expected:
+            wrong.append(f"pPR({when}) {number} {attribute(mnemonic)}: {got!r}, expected {expected!r}")
+    assert not wrong, "\n".join(wrong)
+
+    for when, rows in calls.items():
+        moment = datetime.fromisoformat(when)
+        for record in rows.values():
+            for m in ATTRIBUTES:
+                changed = record[f"PR_{m}_ChangedAt"]
+                if record[attribute(m)] is None and changed is None:
+                    continue
+                assert changed is not None and changed.replace(tzinfo=None) <= moment, (
+                    f"pPR({when}) PR_ID {record['PR_ID']} shows {attribute(m)} from ChangedAt {changed}"
+                )
+                assert record[f"PR_{m}_Positor"] == 0, record
+                assert record[f"PR_{m}_Reliability"] == 1, record
+
+    sst = [c for c in pit_columns(snap, at(D1)) if c.startswith("PR_SST_")]
+    s3 = story.snap("s3")
+    before = pit(s3, at("2014-06-01"))[pr_id(s3, "SX-0005")]
+    after = calls["2014-06-01"][pr_id(snap, "SX-0005")]
+    assert {c: after[c] for c in sst} == {c: before[c] for c in sst}, "the failed cast changed pPR's sell start"
+
+
+def test_pit_equals_latest(story, business):
+    """AC3: pPR at a time after every ChangedAt equals lPR_Product row for row."""
+    for label, snap in (("s5", story.snap("s5")), ("s7", story.snap("s7")), ("business", business)):
+        latest_rows = "select * from integrate.lPR_Product"
+        point = f"select * from {PIT}({at('2099-01-01')})"
+        for one, other in ((latest_rows, point), (point, latest_rows)):
+            extra = snap.sql(f"select count(*) from ({one} except all {other})")
+            assert extra == [(0,)], f"{label}: `{one}` has rows `{other}` lacks"
+        count = snap.count("integrate", "lPR_Product")
+        assert count > 0, label
+        assert snap.sql(f"select count(*) from ({point})") == [(count,)], label
+
+
+def test_pit_no_backfill(story, business):
+    """AC4, EC1: before every ChangedAt, pPR returns one row per PR_Product identity with every attribute
+    column null, while serve's dimension at that date shows the first values; an attribute first known
+    later than the others is null in pPR until its own first ChangedAt."""
+    snap = story.snap("s5")
+    rows = pit(snap, at("2000-01-01"))
+    identities = {r[0] for r in snap.sql("select PR_ID from integrate.PR_Product")}
+    assert set(rows) == identities and len(identities) == 9
+    columns = _attribute_columns(pit_columns(snap, at("2000-01-01")))
+    held = [(pid, c, r[c]) for pid, r in rows.items() for c in columns if r[c] is not None]
+    assert not held, f"pPR before every ChangedAt holds values: {held[:10]}"
+
+    def serve_on(snap: Snapshot, day: str, number: str, what: str):
+        rows = snap.sql(
+            f"select cast({q(dimension_column(snap, what))} as varchar) from serve__uss.product "
+            "where split_part(_key__product, '|', 1) = ? "
+            f"and product__valid_from <= {at(day)} and {at(day)} < product__valid_to",
+            [str(pr_id(snap, number))],
+        )
+        assert len(rows) == 1, f"serve__uss.product has {len(rows)} versions of {number} on {day}"
+        return rows[0][0]
+
+    expected = [
+        ("SC-0001", "color", "Black"),
+        ("SN-0002", "name", "Alpha Prime"),
+        ("SA-0006", "color", "Blue"),
+        ("SS-0008", "discontinued", "2015-01-01"),
+        ("SN-0009", "name", "Newcomer"),
+    ]
+    for number, what, value in expected:
+        got = serve_on(snap, "2000-01-01", number, what)
+        assert (got or "")[: len(value)] == value, f"serve on 2000-01-01, {number} {what}: {got!r}"
+    for number in [*base_products(), "SN-0009"]:
+        assert serve_on(snap, "2000-01-01", number, "number") == number
+
+    # BQ-104's discontinued date is first posited at LATE_CHANGE, a year after its other attributes.
+    pid = pr_id(business, "BQ-104")
+    between = pit(business, at("2012-06-01"))[pid]
+    assert between[attribute("NUM")] == "BQ-104"
+    assert between[attribute("COL")] == "Red"
+    assert between[attribute("DIS")] is None, between
+    assert _text("DIS", pit(business, at(LATE_CHANGE))[pid][attribute("DIS")]) == LATE_DISCONTINUED
+    assert (serve_on(business, "2012-06-01", "BQ-104", "discontinued") or "")[:10] == LATE_DISCONTINUED
 
 
 # --------------------------------------------------------------------------- AC4, EC5

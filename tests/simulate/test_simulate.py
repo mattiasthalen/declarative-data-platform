@@ -798,3 +798,99 @@ def test_no_leftover_files(monkeypatch, capsys, tmp_path, lake_kind):
     stray = [p for p in (lake / RESOURCE).rglob("*") if p.is_file() and p.suffix != ".parquet"]
     assert not stray, stray
     assert all(p.name.count(".") >= 2 for p in files(lake)), files(lake)
+
+
+# --------------------------------------------------------------------------- story #4: dates in order
+
+LONG_SEEDS, LONG_LOADS = range(20), 200
+
+
+@pytest.fixture(scope="module")
+def long_runs(tmp_path_factory):
+    """Per seed 0..19: the exit code of ``simulate --seed s --loads 200`` on an empty lake, and the lake."""
+    import simulate
+
+    out = {}
+    for seed in LONG_SEEDS:
+        lake = tmp_path_factory.mktemp(f"long{seed}") / "lake"
+        lake.mkdir()
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setenv("LAKE_ROOT", str(lake))
+            try:
+                code = simulate.main(["--seed", str(seed), "--loads", str(LONG_LOADS)])
+            except SystemExit as exit_:
+                code = exit_.code
+        out[seed] = (code, lake)
+    return out
+
+
+def test_dates_in_order(long_runs):
+    """AC8, EC7: over 200-load runs for seeds 0..19, no landed row has a SellStartDate after its
+    SellEndDate or after its DiscontinuedDate, when either is set."""
+    import duckdb
+
+    bad, paired = [], 0
+    for seed, (code, lake) in long_runs.items():
+        assert code == 0, f"seed {seed}: simulate ended with {code}"
+        assert len(files(lake)) == LONG_LOADS + 1, f"seed {seed}: {len(files(lake))} loads"
+
+        def day(field: str) -> str:
+            return f"try_cast(left(json_extract_string(cast(data as varchar), '$.{field}'), 10) as date)"
+
+        con = duckdb.connect()
+        try:
+            rows = con.execute(
+                f"""
+                with r as (
+                    select cast(_dlt_load_id as varchar) as load,
+                        json_extract_string(cast(data as varchar), '$.ProductNumber') as number,
+                        {day('SellStartDate')} as start, {day('SellEndDate')} as ended,
+                        {day('DiscontinuedDate')} as discontinued
+                    from read_parquet('{(lake / RESOURCE).as_posix()}/**/*.parquet', hive_partitioning = false)
+                )
+                select load, number, start, ended, discontinued,
+                    count(*) filter (where start is not null and (ended is not null or discontinued is not null))
+                        over () as paired
+                from r
+                """
+            ).fetchall()
+        finally:
+            con.close()
+        paired += rows[0][5] if rows else 0
+        for load, number, start, ended, discontinued, _ in rows:
+            if start is None:
+                continue
+            if (ended is not None and start > ended) or (discontinued is not None and start > discontinued):
+                bad.append(
+                    f"seed {seed} load {load}: {number} starts {start}, ends {ended}, discontinued {discontinued}"
+                )
+    assert paired > 0, "no row holds a sell start and an end date: the check proves nothing"
+    assert not bad, f"{len(bad)} rows out of order, e.g.:\n" + "\n".join(bad[:20])
+
+
+def test_null_start_lands_before_end():
+    """AC8, EC7: a sell start set on a row whose sell start is null lands 1 to 365 days before the row's
+    earliest set end date (SellEndDate, DiscontinuedDate), and with neither set, 1 to 365 days before
+    2013-01-01."""
+    import random
+
+    import simulate
+
+    rows = snapshot_rows()
+    simulation = simulate.Simulation(0, rows, rows)
+    cases = [
+        ("2012-03-10", None, date(2012, 3, 10)),
+        (None, "2011-08-01", date(2011, 8, 1)),
+        ("2012-03-10", "2011-08-01", date(2011, 8, 1)),
+        ("2011-08-01", "2012-03-10", date(2011, 8, 1)),
+        (None, None, date(2013, 1, 1)),
+    ]
+    wrong = []
+    for ended, discontinued, anchor in cases:
+        for draw in range(300):
+            row = dict(rows[0], SellStartDate=None, SellEndDate=ended, DiscontinuedDate=discontinued)
+            value = simulation.other_value(random.Random(draw), row, "SellStartDate")
+            start = date.fromisoformat(str(value)[:10])
+            if not anchor - timedelta(days=365) <= start < anchor:
+                wrong.append(f"end {ended}, discontinued {discontinued}: start {start}, expected 1 to 365 days before {anchor}")
+    assert not wrong, f"{len(wrong)} starts out of range, e.g.:\n" + "\n".join(wrong[:10])

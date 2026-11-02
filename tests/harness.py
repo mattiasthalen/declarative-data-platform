@@ -397,6 +397,35 @@ def latest(snap: Snapshot, number: str, mnemonic: str):
     return rows[0][0]
 
 
+# --------------------------------------------------------------------------- the point-in-time perspective
+
+# A DuckDB table macro, not a relation: information_schema does not list it, so its shape is read
+# with DESCRIBE over a call.
+PIT = 'integrate."pPR_Product"'
+
+
+def at(moment: str) -> str:
+    """A timestamp literal for a pPR call: ``at("2014-03-01")``, ``at("2014-02-28 23:59:59")``."""
+    return f"timestamp '{moment}'"
+
+
+def pit_columns(snap: Snapshot, when: str) -> list[str]:
+    """pPR's column names, in order, for a call with the SQL expression ``when``."""
+    return [r[0] for r in snap.sql(f"describe select * from {PIT}({when})")]
+
+
+def pit(snap: Snapshot, when: str) -> dict:
+    """PR_ID -> {column: value} of every row pPR returns for the SQL expression ``when``."""
+    columns = pit_columns(snap, when)
+    rows = snap.sql(f"select * from {PIT}({when})")
+    out = {}
+    for row in rows:
+        record = dict(zip(columns, row))
+        assert record["PR_ID"] not in out, f"pPR({when}) returns PR_ID {record['PR_ID']} twice"
+        out[record["PR_ID"]] = record
+    return out
+
+
 # --------------------------------------------------------------------------- the USS
 
 GHOSTS = ("[not available]", "[not applicable]")
