@@ -131,9 +131,10 @@ class Simulation:
     def next_load(self, index: int, day: date, final: bool) -> list[dict]:
         """The next load's rows: the previous load, back-from-drop products restored, changed.
 
-        A product drops out for one load only: the run's ``final`` load drops none, since no later
-        load would bring it back, and a product just back is not dropped again. Those drop outs
-        are edits instead.
+        Within a run that completes, a product drops out for one load only: the run's ``final`` load
+        drops none, since no later load would bring it back, and a product just back is not dropped
+        again. Those drop outs are edits instead. A run stopped between a drop out and the next load
+        leaves the product out, and no later run brings it back (ADR-0027 addendum).
         """
         rng = random.Random(f"{self.seed}:{index}")
         rows = {row[KEY]: dict(row) for row in self.rows}
@@ -185,9 +186,13 @@ class Simulation:
             return f"{current or row[KEY]} {rng.choice(('II', 'Pro', 'Lite', 'Plus', 'Sport'))}"
         if attribute in DATES:
             # Kept in order: a sell start moves earlier, an end lands 1 to 1501 days after the sell start.
-            start = parse_date(row.get("SellStartDate")) or date(2013, 1, 1)
+            start = parse_date(row.get("SellStartDate"))
             if attribute == "SellStartDate":
-                return (start - timedelta(days=rng.randint(1, 365))).isoformat()
+                # A null start moves back from the earliest end date, so it never lands after one.
+                ends = [d for d in (parse_date(row.get(a)) for a in DATES[1:]) if d is not None]
+                base = start or min(ends, default=date(2013, 1, 1))
+                return (base - timedelta(days=rng.randint(1, 365))).isoformat()
+            start = start or date(2013, 1, 1)
             ended = (start + timedelta(days=rng.randint(1, 1500))).isoformat()
             return ended if ended != current else (start + timedelta(days=1501)).isoformat()
         choices = [value for value in self.values(attribute) if value != current]

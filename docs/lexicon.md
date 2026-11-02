@@ -16,6 +16,8 @@ The words someone needs defined to talk about using or developing the platform. 
 
 **changed-at** — When a value became true in the business, as the source says. The only time serve uses. Distinct from *positing time* and the *batch*.
 
+**backfill** — Serve's convention that each attribute's first value has held since `0001-01-01`, so a dimension has no all-null version and no gap before a product's first *changed-at*. Integrate never backfills. Distinct from re-running ingest or a build for past periods, which orchestrators also call a backfill. See [ADR-0011](adr/0011-serve-a-uss-from-staged-bridges-unioned-by-name.md).
+
 **positing time** — When the platform learned a value: the extraction time of the *load* that brought it. "Extracted-at" is the column, not another word for the concept.
 
 **restatement** — The same value stated again at a later *changed-at*. Distinct from a *correction*, which states another value at a *changed-at* already held.
