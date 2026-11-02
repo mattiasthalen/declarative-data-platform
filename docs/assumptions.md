@@ -13,7 +13,7 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A5 | The generated load writes each posit and annex key once; nothing in DuckDB enforces it, since no model declares a contract or constraint. | integrate | `IntegrityViolations` reports a duplicate key and its `empty` test fails the build. |
 | A6 | Source dates and timestamps carry no timezone offset. `try_cast` to timestamp drops an offset without converting. | conform | A contract's source serves a value with `Z` or `+hh:mm`. |
 | A7 | CI needs no network beyond GitHub and the Python package index; nothing in `pytest` or `task check` calls the live source. | ci | A CI run fails on a connection error to a source host, or a test needs `demodata.grapecity.com`. |
-| A8 | The `test` job runs in under 4 minutes on a GitHub-hosted `ubuntu-latest` runner, which has 4 CPUs while the repository is public; `-n auto` starts one xdist worker per CPU because psutil is not installed (with psutil, it counts physical cores instead). | ci | The `test` job takes 4 minutes or longer, or psutil enters `uv.lock`. Then pin the tests that share an expensive module fixture to one xdist worker (`--dist loadgroup` with `xdist_group` markers) before anything else. |
+| A8 | The `test` job runs in under 6 minutes on a GitHub-hosted `ubuntu-latest` runner, which has 4 CPUs while the repository is public; `-n auto` starts one xdist worker per CPU because psutil is not installed (with psutil, it counts physical cores instead). | ci | The `test` job takes 6 minutes or longer, or psutil enters `uv.lock`. Pinning tests that share a module fixture to one xdist worker (`--dist loadgroup`) is not the fix: it measured slower, because xdist rebuilds a module fixture whenever a worker switches modules. |
 | A9 | The `main` ruleset is enforced: the repository is public, or its owner's plan includes rulesets on private repositories. | ci | Creating the ruleset is refused, or a pull request with a red `check` can be merged. |
 | A10 | Claude Code loads a `.claude/rules/*.md` file when the agent reads a file matching one of its `paths:` patterns, and reports it to the `InstructionsLoaded` hook. Claude Code drops a trailing `/**`, so `anchor/**` matches an `anchor` folder at any depth and `/anchor/**` only the root one (probed on 2.1.316). | harness | `uv run task test-rules` fails after a Claude Code update. |
 | A11 | Every file of a layer sits under a folder named after the layer, or under that layer's declarations (`contracts/`, `models/raw/`, `anchor/`). | harness | A layer's file is found outside them, and an agent edits it without its rules. |
@@ -49,6 +49,12 @@ What the design still assumes, and how you would know it stopped holding; then f
 ## Measured (2026-10-31, CI)
 
 - The `test` job on a GitHub-hosted `ubuntu-latest` (Ubuntu 26.04) runner: 118 passed, 1 skipped, job 3 min 47 s (PR #22, run 41252831815). The `check` job: 12 s.
+
+## Measured (2026-11-02, CI)
+
+- The `test` job serially on `main`: job 10 min 55 s (run 41364651214, 2-core runner, before the repository went public).
+- The `test` job with `-n auto` on PR #41, 4-core `ubuntu-latest`, `created: 4/4 workers`: 317 passed, 2 skipped; job 5 min 09 s, 5 min 07 s and 5 min 07 s on three attempts of run 41371483329 (pytest itself 4 min 57 s).
+- Grouping tests by module fixture with `--dist loadgroup`, measured on 4 CPUs in the sandbox: 7 min 05 s, against 4 min 54 s with the default split.
 
 ## Measured (2026-10-31, the AdventureWorks OData feed)
 
