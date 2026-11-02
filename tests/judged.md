@@ -269,7 +269,7 @@ and kept with the run's spec. The reviewer records pass or fail for each line be
 
 ## Hero drawing (AC8)
 
-Render `docs/hero.svg` and place it beside `hero-mockup.svg`. Pass when all hold:
+Render `assets/hero.svg` (moved from `docs/` by story #38; with its animation off, or once the motion has come to rest) and place it beside `hero-mockup.svg`. Pass when all hold:
 
 1. Left to right: the wordmark DECLARATIVE / DATA PLATFORM on two lines with the layer line `ingest · conform · integrate · serve` under it; nine raw tiles slightly out of line; a fanned stack of three pages, the front one with indented key and value lines; a star of one centre tile and eight tiles on a ring, each joined to the centre.
 2. A dotted trail of three dots sits in each gap and brightens toward the star.
@@ -279,9 +279,34 @@ Render `docs/hero.svg` and place it beside `hero-mockup.svg`. Pass when all hold
 
 ## Hero on GitHub (AC9, EC4)
 
-Screenshots of the branch's README on github.com: light and dark theme, desktop width and 390px. Pass when all hold:
+Screenshots of the branch's README on github.com, whose hero is `assets/hero.svg` (story #38), taken once its motion has come to rest: light and dark theme, desktop width and 390px. Pass when all hold:
 
 1. The README opens with the hero; no `# declarative-data-platform` heading above or below it.
 2. The wordmark is in Spectral, the layer line in Inter: neither falls back to Georgia, Times or Arial.
 3. On the light theme the hero reads as a dark card with rounded corners; on dark it sits on the page with no seam but its corners.
 4. At 390px the whole banner is visible, nothing cropped, and both the wordmark and the layer line are legible.
+
+# Judged checks for story #38 (the hero in motion)
+
+The reference for the motion is `tests/fixtures/hero-motion-mockup.svg`, storyboard C in its third
+revision, the mockup approved in the design interview. The reviewer records pass or fail for each
+line below.
+
+## Hero in motion (AC8, AC9)
+
+**Storyboard (AC8).** Open `assets/hero.svg` in a browser with motion allowed, beside
+`tests/fixtures/hero-motion-mockup.svg`, reloading to replay it. Pass when all hold:
+
+1. The wordmark, the layer line, the nine raw tiles and the three pages stay where #37's still has them throughout; only copies of the raw tiles, the Anchor shapes and the stage lines move.
+2. Four stages, in this order, each change lighting one page, back to front: (1) raw, the copies appear on the raw tiles; (2) the back page lights and the copies tidy into a 3 by 3 grid; (3) the middle page lights and they become Anchor notation: two anchors (squares, both lit in the accent), each with three historized attributes (double circles), the anchors joined by a tie (diamond); (4) the front page lights, the tie slides into the centre and becomes the lit bridge, the attributes and anchors move out to the ring as dimensions, the anchors' light passes to the bridge, and the spokes and the glow appear.
+3. It ends on #37's still (the "Hero drawing" rubric above holds for the last frame) and stays there: it plays once, in about 11 s, and does not loop.
+4. Nothing flickers, jumps or shows a half-built frame at the start or the end; the stages read in the mockup's order and spacing (exact easing and per-tile stagger are not judged).
+
+**On GitHub (AC9).** On github.com, the branch's README, in Chrome, Firefox and Safari, each in the light and the dark theme, then with reduced motion requested by the system (macOS: Accessibility, Display, Reduce motion; Windows: Settings, Accessibility, Visual effects, Animation effects off). Pass when all hold:
+
+1. With motion allowed, in each of the three browsers and both themes, the hero opens on the raw tiles and the pages, plays the four stages once, and rests on the still until the page reloads.
+2. With reduced motion requested, in each browser, the hero shows #37's still at once: no motion, no half-built frame.
+3. The wordmark and the layer line keep their embedded fonts (Spectral, Inter) throughout the motion and at rest.
+4. A recording of the motion on github.com (one browser, motion allowed, from load to rest) is on the evidence page, with a note per browser and theme and for reduced motion.
+
+A browser that keeps the hero still with motion allowed, or moves it with reduced motion requested, breaks assumption A27 (`docs/assumptions.md`): record which, and the still it should have shown.
