@@ -3,3 +3,6 @@ models/** -text
 
 # The README is spliced byte for byte by the generators that own its diagram regions.
 README.md -text
+
+# The README's artwork is generated and compared byte for byte too.
+assets/** -text
