@@ -2,8 +2,9 @@
 
 Reads ``anchor/model.yaml`` (a mirror of anchor.xsd, ADR-0004) and ``anchor/mappings/<anchor>.yaml``
 and writes one package, ``models/integrate/anchor/``: per anchor its table, per attribute a posit
-table, an annex table and the assembled view, the latest and point-in-time perspectives, the key views, the
-integrity checks and Anchor's schema tracking, all in Roenbaeck's default naming (ADR-0003).
+table, an annex table and the assembled view, the latest, point-in-time and time-traveling
+perspectives, the key views, the integrity checks and Anchor's schema tracking, all in Roenbaeck's
+default naming (ADR-0003).
 The load itself is in ``macros/integrate/anchor.sql`` (ADR-0006).
 """
 
@@ -415,15 +416,27 @@ def anchor_files(anchor: Anchor, attributes: list[Attribute], identifier: Attrib
         "identity, each attribute's latest reliable value as positor 0 states it, of those that changed at or "
         "before changingTimepoint; nothing before an attribute's first ChangedAt (ADR-0030).",
     )
+    files[f"t{anchor.name}.sql"] = model(
+        "materialized='table_macro', parameters=['changingTimepoint', 'positingTimepoint']",
+        perspective(anchor, attributes, changed_by="changingTimepoint", posited_by="positingTimepoint"),
+        comment=f"The time-traveling perspective of {anchor.name}, a table macro taking changingTimepoint and "
+        "positingTimepoint: per identity, each attribute's latest reliable value as positor 0 had stated it by "
+        "positingTimepoint, of those that changed at or before changingTimepoint (ADR-0033).",
+    )
     files |= integrity_files(anchor, attributes, identifier)
     return files
 
 
-def perspective(anchor: Anchor, attributes: list[Attribute], changed_by: str | None = None) -> str:
+def perspective(
+    anchor: Anchor, attributes: list[Attribute], changed_by: str | None = None, posited_by: str | None = None
+) -> str:
     """The latest perspective's select, the anchor joined to each attribute's latest version; with
-    ``changed_by``, the point-in-time perspective's, as of that SQL expression."""
+    ``changed_by``, the point-in-time perspective's, as of that SQL expression; with ``posited_by`` too,
+    the time-traveling perspective's, as known at that one."""
     joins, columns = [], [f'    p."{anchor.id}"', f'    p."Metadata_{anchor.mnemonic}"']
     cutoff = f", '{changed_by}'" if changed_by else ""
+    if posited_by:
+        cutoff += f", posited_by='{posited_by}'"
     for t in attributes:
         m = t.prefix
         alias = t.mnemonic.lower()
