@@ -2,7 +2,7 @@
 
 Reads ``anchor/model.yaml`` (a mirror of anchor.xsd, ADR-0004) and ``anchor/mappings/<anchor>.yaml``
 and writes one package, ``models/integrate/anchor/``: per anchor its table, per attribute a posit
-table, an annex table and the assembled view, the latest perspective, the key views, the
+table, an annex table and the assembled view, the latest and point-in-time perspectives, the key views, the
 integrity checks and Anchor's schema tracking, all in Roenbaeck's default naming (ADR-0003).
 The load itself is in ``macros/integrate/anchor.sql`` (ADR-0006).
 """
@@ -403,6 +403,25 @@ def anchor_files(anchor: Anchor, attributes: list[Attribute], identifier: Attrib
         ),
     )
 
+    files[f"l{anchor.name}.sql"] = view(
+        f"The latest perspective of {anchor.name}: per identity, each attribute's latest reliable "
+        "value as positor 0 states it now.",
+        perspective(anchor, attributes, "anchor_latest"),
+    )
+    files[f"p{anchor.name}.sql"] = model(
+        "materialized='table_macro', parameters=['changingTimepoint']",
+        perspective(anchor, attributes, "anchor_point_in_time"),
+        comment=f"The point-in-time perspective of {anchor.name}, a table macro taking changingTimepoint: per "
+        "identity, each attribute's latest reliable value as positor 0 states it, of those that changed at or "
+        "before changingTimepoint; nothing before an attribute's first ChangedAt (ADR-0030).",
+    )
+    files |= integrity_files(anchor, attributes, identifier)
+    return files
+
+
+def perspective(anchor: Anchor, attributes: list[Attribute], version_macro: str) -> str:
+    """The latest or point-in-time perspective's select: the anchor joined to each attribute's
+    version in effect, as ``version_macro`` (``anchor_latest`` or ``anchor_point_in_time``) picks it."""
     joins, columns = [], [f'    p."{anchor.id}"', f'    p."Metadata_{anchor.mnemonic}"']
     for t in attributes:
         m = t.prefix
@@ -418,17 +437,11 @@ def anchor_files(anchor: Anchor, attributes: list[Attribute], identifier: Attrib
             f'    {alias}."{t.name}"',
         ]
         joins.append(
-            f"left join (\n    select * from (\n        {{{{ anchor_latest({{'mnemonic': '{m}', 'name': '{t.name}'}}) }}}}\n    )\n"
+            f"left join (\n    select * from (\n        {{{{ {version_macro}({{'mnemonic': '{m}', 'name': '{t.name}'}}) }}}}\n    )\n"
             f'    qualify row_number() over (partition by "{m}_{anchor.id}" order by "{m}_ChangedAt" desc) = 1\n'
             f') {alias} on {alias}."{m}_{anchor.id}" = p."{anchor.id}"'
         )
-    files[f"l{anchor.name}.sql"] = view(
-        f"The latest perspective of {anchor.name}: per identity, each attribute's latest reliable "
-        "value as positor 0 states it now.",
-        "select\n" + ",\n".join(columns) + f"\nfrom {{{{ ref('{anchor.name}') }}}} p\n" + "\n".join(joins),
-    )
-    files |= integrity_files(anchor, attributes, identifier)
-    return files
+    return "select\n" + ",\n".join(columns) + f"\nfrom {{{{ ref('{anchor.name}') }}}} p\n" + "\n".join(joins)
 
 
 def schema_json(schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]]) -> str:
