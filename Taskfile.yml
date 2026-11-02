@@ -2,19 +2,20 @@ version: "3"
 
 tasks:
   generate:
-    desc: Regenerate the dbt models of every layer from the declarations
+    desc: Regenerate the dbt models of every layer from the declarations, and the README's artwork
     cmds:
       - uv run conform generate
       - uv run integrate generate
       - uv run serve generate
+      - uv run artwork generate
 
   check:
-    desc: Fail if any layer's committed models or README diagram differ from what its declarations produce
+    desc: Fail if any layer's committed models or README diagram, or the README's artwork, differ from what generates them
     silent: true
     cmds:
       - |
         failed=0
-        for layer in conform integrate serve; do
+        for layer in conform integrate serve artwork; do
           if uv run "$layer" generate --check; then
             echo "$layer: pass"
           else
