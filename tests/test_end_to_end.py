@@ -1249,15 +1249,16 @@ def test_tt_correction(story):
     wrong, sell_starts = [], []
     sst = [c for c in tt_columns(snap, timestamp(T0), posited(L3)) if c.startswith("PR_SST_")]
     for positing, expected in cases:
-        rows = tt(snap, timestamp(T0), timestamp(positing))
+        known = timestamp(positing)
+        rows = tt(snap, timestamp(T0), known)
         got = _tt_value(snap, rows, "SN-0002", "NAM")
         if got != expected:
-            wrong.append(f"tPR(T0, {positing}) SN-0002 name: {got!r}, expected {expected!r}")
+            wrong.append(f"tPR(T0, {known}) SN-0002 name: {got!r}, expected {expected!r}")
         wrong += _known_at_holds(rows, T0, positing)
         record = rows[pr_id(snap, "SX-0005")]
         sell_starts.append({c: record[c] for c in sst})
         if _text("SST", record[attribute("SST")]) != "2011-05-31":
-            wrong.append(f"tPR(T0, {positing}) SX-0005 sell start: {record[attribute('SST')]!r}")
+            wrong.append(f"tPR(T0, {known}) SX-0005 sell start: {record[attribute('SST')]!r}")
     assert not wrong, "\n".join(wrong)
     assert all(s == sell_starts[0] for s in sell_starts), f"SX-0005's sell start moves with K: {sell_starts}"
 
@@ -1350,10 +1351,11 @@ def test_tt_one_build_two_loads(story):
     ]
     wrong = []
     for positing, expected in cases:
-        rows = tt(snap, timestamp(when), timestamp(positing))
+        known = timestamp(positing)
+        rows = tt(snap, timestamp(when), known)
         got = _tt_value(snap, rows, "SA-0006", "COL")
         if got != expected:
-            wrong.append(f"tPR({D2}, {positing}) SA-0006 colour: {got!r}, expected {expected!r}")
+            wrong.append(f"tPR({D2}, {known}) SA-0006 colour: {got!r}, expected {expected!r}")
         wrong += _known_at_holds(rows, when, positing)
     assert not wrong, "\n".join(wrong)
     yellow = tt(snap, timestamp(when), posited(L5, -1))[pr_id(snap, "SA-0006")]
