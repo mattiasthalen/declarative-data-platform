@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+import ownership
 from harness import CONTRACT, CONTRACT_PATH, Workspace, require
 
 
@@ -112,3 +113,13 @@ def test_removed_attribute_removes_its_files(ws):
         if p.is_file() and "PR_DIS" in p.name + p.read_text()
     ]
     assert leftover == []
+
+
+def test_root_folder_no_longer_written_is_stale(tmp_path):
+    """AC2: a folder at the repo root that a generator owns but no longer writes is stale; one another generator owns is not."""
+    for folder, generator in (("assets", "artwork"), ("diagrams", "erd")):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "README.md").write_text(ownership.marker(generator, "test declarations"))
+    drifts = ownership.drift(tmp_path, "artwork", "test declarations", {Path("art"): {"hero.svg": "<svg/>\n"}})
+    stale = [d.path.as_posix() for d in drifts if d.kind == "stale"]
+    assert stale == ["assets"]
