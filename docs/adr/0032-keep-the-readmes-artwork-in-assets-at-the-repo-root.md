@@ -1,6 +1,6 @@
 # ADR-0032 — Keep the README's artwork in assets/ at the repo root
 
-**Status:** Proposed (2026-11-02) · **Supersedes:** the location decision (under `docs/`) in [ADR-0029](0029-ship-the-readmes-artwork-as-svg-committed-under-docs.md)
+**Status:** Accepted (2026-11-02) · **Supersedes:** the location decision (under `docs/`) in [ADR-0029](0029-ship-the-readmes-artwork-as-svg-committed-under-docs.md)
 
 ## Context
 
