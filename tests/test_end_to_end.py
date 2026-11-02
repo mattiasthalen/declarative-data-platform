@@ -12,13 +12,14 @@ snapshot of the warehouse after every build. The main story:
     s6  a description in anchor/model.yaml changes      generate, build
     s7  no new files                                    build --full-refresh
 
-The point-in-time perspective pPR_Product is read from the same snapshots (story #4).
+The point-in-time perspective pPR_Product is read from the same snapshots (story #4), and so
+is the time-traveling perspective tPR_Product (story #5).
 """
 
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 import yaml
@@ -29,6 +30,7 @@ from harness import (
     GHOSTS,
     PIT,
     SCHEMAS,
+    TT,
     Snapshot,
     Workspace,
     annex,
@@ -44,12 +46,15 @@ from harness import (
     pit,
     pit_columns,
     posit,
+    posited,
     posits,
     pr_id,
     product,
     q,
     require,
     tail,
+    tt,
+    tt_columns,
 )
 
 M0, M1, M2 = "2014-02-08", "2014-03-01", "2014-04-01"
@@ -387,8 +392,9 @@ def _anchor_rows(snap: Snapshot) -> dict[str, list[tuple]]:
 
 
 def test_full_refresh_keeps_integrate(story):
-    """F1, story #4 EC5: dbt build --full-refresh does not rebuild integrate: every anchor, posit and annex
-    row stays as it was, and pPR_Product, recreated by it, returns the rows it returned before."""
+    """F1, story #4 EC5, story #5 EC5: dbt build --full-refresh does not rebuild integrate: every anchor,
+    posit and annex row stays as it was, and pPR_Product and tPR_Product, recreated by it, return the
+    rows they returned before."""
     s6, s7 = story.snap("s6"), story.snap("s7")
     before, after = _anchor_rows(s6), _anchor_rows(s7)
     assert all(before.values()), "the story left an empty integrate table to compare"
@@ -399,6 +405,20 @@ def test_full_refresh_keeps_integrate(story):
         rows = s6.sql(query)
         assert rows, f"pPR({when}) is empty before the full refresh"
         assert s7.sql(query) == rows, f"pPR({when}) changed over the full refresh"
+    # Story #5 EC5: tPR is recreated too, and PositedAt comes from the lake, so as known at any K
+    # the rows are the ones it returned before.
+    for changing, positing in (
+        (at("2000-01-01"), posited(L1)),
+        (at(D0), posited(L3, -1)),
+        (at(D0), posited(L3)),
+        (at(D2), posited(L5, -1)),
+        (at(D2), posited(L5)),
+        (at("2099-01-01"), "date '9999-12-31'"),
+    ):
+        query = f"select * from {TT}({changing}, {positing}) order by all"
+        rows = s6.sql(query)
+        assert rows, f"tPR({changing}, {positing}) is empty before the full refresh"
+        assert s7.sql(query) == rows, f"tPR({changing}, {positing}) changed over the full refresh"
 
 
 # --------------------------------------------------------------------------- AC16, AC17, AC23
@@ -1152,3 +1172,254 @@ def test_serve_catches_up_after_skipped_build(lifecycle):
         [pid],
     )
     assert bridged[0][0] > 0, "the bridge has no row for the new version"
+
+
+# --------------------------------------------------------------------------- story #5: tPR_Product
+#
+# tPR_Product(changingTimepoint, positingTimepoint) is pPR_Product as known at the positing time K:
+# an annex row counts when its PositedAt <= K, a posit when its ChangedAt <= T; per posit its latest
+# annex row known at K decides whether it holds; every anchor row is returned. PositedAt is a load's
+# _dlt__extracted_at, so K is named by load: posited(L3) is L3's PositedAt, posited(L3, -1) one
+# microsecond before it.
+
+T0 = at(D0)
+FAR = "date '9999-12-31'"
+DAY_US = 86_400_000_000
+# The last load each story build had seen.
+LATEST_LOAD = {"s1": L1, "s2": L1, "s3": L2, "s4": L3, "s5": L5, "s6": L5, "s7": L5}
+
+
+def _moment_of(literal: str) -> datetime:
+    """The naive datetime a ``date '...'`` or ``timestamp '...'`` literal names."""
+    return datetime.fromisoformat(literal.split("'")[1])
+
+
+def _epoch_us_of(value: datetime) -> int:
+    """A PositedAt as epoch microseconds, as ``epoch_us`` gives a load's."""
+    naive = value.replace(tzinfo=None) if value.tzinfo is None else value.astimezone(UTC).replace(tzinfo=None)
+    delta = naive - datetime(1970, 1, 1)
+    return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
+
+
+def _tt_value(snap: Snapshot, rows: dict, number: str, mnemonic: str):
+    record = rows.get(pr_id(snap, number))
+    assert record is not None, f"tPR has no row for {number}"
+    return _text(mnemonic, record[attribute(mnemonic)])
+
+
+def _known_at_holds(rows: dict, changing: str, positing: str) -> list[str]:
+    """What breaks crt's rules in tPR's rows: a value changed after T, posited after K, or not reliable positor 0."""
+    t, k = _moment_of(changing), _moment_of(positing)
+    broken = []
+    for record in rows.values():
+        for m in ATTRIBUTES:
+            if record[attribute(m)] is None and record[f"PR_{m}_ChangedAt"] is None:
+                continue
+            changed, stated = record[f"PR_{m}_ChangedAt"], record[f"PR_{m}_PositedAt"]
+            if changed is None or changed.replace(tzinfo=None) > t:
+                broken.append(f"PR_ID {record['PR_ID']} {attribute(m)} from ChangedAt {changed} > T {t}")
+            if stated is None or stated.replace(tzinfo=None) > k:
+                broken.append(f"PR_ID {record['PR_ID']} {attribute(m)} posited at {stated} > K {k}")
+            if (record[f"PR_{m}_Positor"], record[f"PR_{m}_Reliability"]) != (0, 1):
+                broken.append(f"PR_ID {record['PR_ID']} {attribute(m)} is not reliable positor 0: {record}")
+    return broken
+
+
+def _same_rows(snap: Snapshot, one: str, other: str) -> list[str]:
+    """Both ways of ``except all`` between two queries, and their counts: empty when they hold the same rows."""
+    found = []
+    for a, b in ((one, other), (other, one)):
+        extra = snap.sql(f"select count(*) from ({a} except all {b})")[0][0]
+        if extra:
+            found.append(f"`{a}` has {extra} rows `{b}` lacks")
+    return found
+
+
+def test_tt_shape(story):
+    """Story #5 AC1: after every story build, tPR_Product runs with a date or a timestamp for either argument
+    and returns exactly lPR_Product's column names, in order."""
+    calls = (
+        ("date '2014-03-01'", "date '2099-01-01'"),
+        (at("2014-03-01 00:00:00"), posited(L1)),
+        ("date '2014-03-01'", posited(L1)),
+        (at("2014-03-01 00:00:00"), "date '2099-01-01'"),
+    )
+    for label in STORY_LABELS:
+        snap = story.snap(label)
+        expected = snap.columns("integrate", "lPR_Product")
+        assert expected, f"{label}: integrate has no lPR_Product to compare with"
+        for changing, positing in calls:
+            got = tt_columns(snap, changing, positing)
+            assert got == expected, f"{label}: tPR({changing}, {positing}) columns differ from lPR_Product's"
+            assert snap.sql(f"select count(*) from {TT}({changing}, {positing})")[0][0] > 0, label
+
+
+def test_tt_correction(story):
+    """Story #5 AC2, EC2, EC6: in s4, SN-0002's name at T0 is Alpha as known at L2 and just before L3, and
+    Alpha Prime as known exactly at L3 and after it; SX-0005's failed cast in L3 changes its sell start as
+    known at none of those K."""
+    snap = story.snap("s4")
+    cases = [
+        (posited(L2), "Alpha"),
+        (posited(L3, -1), "Alpha"),
+        (posited(L3), "Alpha Prime"),
+        (posited(L3, DAY_US), "Alpha Prime"),
+    ]
+    wrong, sell_starts = [], []
+    sst = [c for c in tt_columns(snap, T0, posited(L3)) if c.startswith("PR_SST_")]
+    for positing, expected in cases:
+        rows = tt(snap, T0, positing)
+        got = _tt_value(snap, rows, "SN-0002", "NAM")
+        if got != expected:
+            wrong.append(f"tPR(T0, {positing}) SN-0002 name: {got!r}, expected {expected!r}")
+        wrong += _known_at_holds(rows, T0, positing)
+        record = rows[pr_id(snap, "SX-0005")]
+        sell_starts.append({c: record[c] for c in sst})
+        if _text("SST", record[attribute("SST")]) != "2011-05-31":
+            wrong.append(f"tPR(T0, {positing}) SX-0005 sell start: {record[attribute('SST')]!r}")
+    assert not wrong, "\n".join(wrong)
+    assert all(s == sell_starts[0] for s in sell_starts), f"SX-0005's sell start moves with K: {sell_starts}"
+
+    corrected = tt(snap, T0, posited(L3))[pr_id(snap, "SN-0002")]
+    assert _epoch_us_of(corrected["PR_NAM_PositedAt"]) == epoch_us(L3), corrected
+
+
+def test_tt_retraction(story):
+    """Story #5 AC3: a source null retracts from its PositedAt: in s4, SE-0003's sell end at T0 is
+    2013-05-29 as known just before L3, and null as known at L3 and after."""
+    snap = story.snap("s4")
+    cases = [
+        (posited(L1), "2013-05-29"),
+        (posited(L3, -1), "2013-05-29"),
+        (posited(L3), None),
+        (posited(L3, DAY_US), None),
+        (FAR, None),
+    ]
+    wrong = []
+    for positing, expected in cases:
+        rows = tt(snap, T0, positing)
+        got = _tt_value(snap, rows, "SE-0003", "SEN")
+        if got != expected:
+            wrong.append(f"tPR(T0, {positing}) SE-0003 sell end: {got!r}, expected {expected!r}")
+        if _tt_value(snap, rows, "SE-0003", "NAM") != "Ending Bike":
+            wrong.append(f"tPR(T0, {positing}) SE-0003 lost its name with its sell end")
+    assert not wrong, "\n".join(wrong)
+
+
+def test_tt_equals_pit(story):
+    """Story #5 AC4, EC4: after every story build, tPR(T, K) with K at or after the latest load's PositedAt
+    equals pPR(T) row for row, for the T's test_pit_values uses."""
+    times = (
+        "2000-01-01",
+        "2014-02-07 23:59:59",
+        D0,
+        "2014-02-28 23:59:59",
+        D1,
+        "2014-03-31 23:59:59",
+        D2,
+        "2014-06-01",
+        "2099-01-01",
+    )
+    wrong = []
+    for label in STORY_LABELS:
+        snap = story.snap(label)
+        for when in times:
+            point = f"select * from {PIT}({at(when)})"
+            count = snap.sql(f"select count(*) from ({point})")[0][0]
+            assert count > 0, f"{label}: pPR({when}) is empty"
+            for positing in (FAR, posited(LATEST_LOAD[label])):
+                known = f"select * from {TT}({at(when)}, {positing})"
+                wrong += [f"{label}: {w}" for w in _same_rows(snap, known, point)]
+    assert not wrong, "\n".join(wrong[:20])
+
+
+def test_tt_before_first_load(story):
+    """Story #5 EC1: as known before L1's PositedAt, tPR returns every identity with an anchor row and every
+    attribute column null; an identity first posited in L3 is returned, all null, as known before L3."""
+    for label, positing in (("s1", posited(L1, -1)), ("s5", posited(L1, -1)), ("s5", "date '2000-01-01'")):
+        snap = story.snap(label)
+        rows = tt(snap, T0, positing)
+        identities = {r[0] for r in snap.sql("select PR_ID from integrate.PR_Product")}
+        assert identities, f"{label}: PR_Product is empty"
+        assert set(rows) == identities, f"{label}: tPR(T0, {positing}) returns {sorted(rows)}, PR_Product holds {sorted(identities)}"
+        columns = _attribute_columns(tt_columns(snap, T0, positing))
+        held = [(pid, c, r[c]) for pid, r in rows.items() for c in columns if r[c] is not None]
+        assert not held, f"{label}: tPR(T0, {positing}) holds values: {held[:10]}"
+
+    snap = story.snap("s4")
+    rows = tt(snap, at("2099-01-01"), posited(L3, -1))
+    newcomer = rows.get(pr_id(snap, "SN-0009"))
+    assert newcomer is not None, "tPR as known before L3 drops SN-0009, whose anchor row exists"
+    columns = _attribute_columns(list(newcomer))
+    assert all(newcomer[c] is None for c in columns), newcomer
+    assert _tt_value(snap, rows, "SN-0002", "NAM") == "Alpha"
+
+
+def test_tt_one_build_two_loads(story):
+    """Story #5 EC3: loads 4 and 5 applied in one build keep their own PositedAts: in s5, SA-0006's colour at
+    2014-04-01 is Blue as known before L4, Yellow between L4 and L5, and Blue from L5 on."""
+    snap = story.snap("s5")
+    when = at(D2)
+    cases = [
+        (posited(L4, -1), "Blue"),
+        (posited(L4), "Yellow"),
+        (posited(L5, -1), "Yellow"),
+        (posited(L5), "Blue"),
+        (FAR, "Blue"),
+    ]
+    wrong = []
+    for positing, expected in cases:
+        rows = tt(snap, when, positing)
+        got = _tt_value(snap, rows, "SA-0006", "COL")
+        if got != expected:
+            wrong.append(f"tPR({D2}, {positing}) SA-0006 colour: {got!r}, expected {expected!r}")
+        wrong += _known_at_holds(rows, when, positing)
+    assert not wrong, "\n".join(wrong)
+    yellow = tt(snap, when, posited(L5, -1))[pr_id(snap, "SA-0006")]
+    assert _epoch_us_of(yellow["PR_COL_PositedAt"]) == epoch_us(L4), yellow
+
+
+# --------------------------------------------------------------------------- story #5 AC5
+#
+# The story's first three loads again, with SN-0002 named Alpha Prime from L1 on: no correction is
+# ever posited. Serve reads current knowledge, so it holds the same rows as the story at s4.
+
+
+def corrected_from_start() -> dict[str, dict]:
+    rows = base_products()
+    rows["SN-0002"].update(Name="Alpha Prime")
+    return rows
+
+
+@pytest.fixture(scope="module")
+def uncorrected(make_workspace) -> Story:
+    ws = make_workspace("uncorrected")
+    s = Story(ws)
+    ws.write_load(1, list(corrected_from_start().values()))
+    if not (s.generate() and s.build("s1") and s.build("s2")):
+        return s
+    ws.write_load(2, list(corrected_from_start().values()))
+    if not s.build("s3"):
+        return s
+    ws.write_load(3, list(load_3().values()))
+    s.build("s4")
+    return s
+
+
+SERVED = (("serve__uss", "product"), ("serve__uss", "_bridge"), ("serve__uss_staging", "bridge__product"))
+
+
+def test_serve_ignores_positing(story, uncorrected):
+    """Story #5 AC5: serve's product, _bridge and bridge__product hold the same rows after L3 whether SN-0002
+    was Alpha and corrected in L3, or Alpha Prime from L1."""
+    corrected, plain = story.snap("s4"), uncorrected.snap("s4")
+    names = {v for _, v, _ in posits(corrected, "NAM", pr_id(corrected, "SN-0002"))}
+    assert names == {"Alpha", "Alpha Prime"}, f"the story posited no correction to compare: {names}"
+    names = {v for _, v, _ in posits(plain, "NAM", pr_id(plain, "SN-0002"))}
+    assert names == {"Alpha Prime"}, f"the uncorrected run posited {names}"
+    for schema, relation in SERVED:
+        assert corrected.columns(schema, relation) == plain.columns(schema, relation), f"{schema}.{relation}"
+        query = f"select * from {q(schema)}.{q(relation)}"
+        one, other = corrected.sql(query), plain.sql(query)
+        assert one, f"{schema}.{relation} is empty"
+        assert sorted(one, key=repr) == sorted(other, key=repr), f"{schema}.{relation} differs with positing"

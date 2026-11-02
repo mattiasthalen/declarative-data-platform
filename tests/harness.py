@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -422,6 +422,35 @@ def pit(snap: Snapshot, when: str) -> dict:
     for row in rows:
         record = dict(zip(columns, row))
         assert record["PR_ID"] not in out, f"pPR({when}) returns PR_ID {record['PR_ID']} twice"
+        out[record["PR_ID"]] = record
+    return out
+
+
+# --------------------------------------------------------------------------- the time-traveling perspective
+
+# tPR_Product(changingTimepoint, positingTimepoint): pPR_Product's rows as known at the positing
+# time, from the annex rows whose PositedAt is at or before it. Also a table macro.
+TT = 'integrate."tPR_Product"'
+
+
+def posited(load: str, offset_us: int = 0) -> str:
+    """A timestamp literal for ``load``'s PositedAt, its ``_dlt__extracted_at``, moved by ``offset_us``."""
+    moment = datetime(1970, 1, 1) + timedelta(microseconds=epoch_us(load) + offset_us)
+    return f"timestamp '{moment.isoformat(sep=' ', timespec='microseconds')}'"
+
+
+def tt_columns(snap: Snapshot, changing: str, positing: str) -> list[str]:
+    """tPR's column names, in order, for a call with the SQL expressions ``changing`` and ``positing``."""
+    return [r[0] for r in snap.sql(f"describe select * from {TT}({changing}, {positing})")]
+
+
+def tt(snap: Snapshot, changing: str, positing: str) -> dict:
+    """PR_ID -> {column: value} of every row tPR returns for ``changing`` and ``positing``."""
+    columns = tt_columns(snap, changing, positing)
+    out = {}
+    for row in snap.sql(f"select * from {TT}({changing}, {positing})"):
+        record = dict(zip(columns, row))
+        assert record["PR_ID"] not in out, f"tPR({changing}, {positing}) returns PR_ID {record['PR_ID']} twice"
         out[record["PR_ID"]] = record
     return out
 

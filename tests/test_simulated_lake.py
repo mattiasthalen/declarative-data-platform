@@ -27,6 +27,7 @@ from harness import (
     PIT,
     REPO,
     RESOURCE,
+    TT,
     Snapshot,
     Workspace,
     annex,
@@ -40,6 +41,7 @@ from harness import (
     posit,
     q,
     tail,
+    tt,
     write_load,
 )
 from test_end_to_end import base_products, business_products, load_3, load_4, load_5
@@ -390,3 +392,42 @@ def test_pit_matches_dimension(simulated):
     latest_rows, point = "select * from integrate.lPR_Product", f"select * from {PIT}({at('2099-01-01')})"
     for one, other in ((latest_rows, point), (point, latest_rows)):
         assert snap.sql(f"select count(*) from ({one} except all {other})") == [(0,)], f"`{one}` has rows `{other}` lacks"
+
+
+# --------------------------------------------------------------------------- story #5: tPR_Product
+
+
+def test_tt_equals_pit_simulated(simulated):
+    """Story #5 AC4, EC4: after the last build, tPR(T, K) with K at or after the latest load's PositedAt
+    equals pPR(T) row for row, for T at each dimension valid-from, 2013-06-01 and 2099-01-01; before an
+    attribute's first ChangedAt it shows no value, as pPR does."""
+    snap = simulated.snap(BUILDS - 1)
+    (latest,) = snap.sql(f"select max(_dlt__extracted_at) from conform.{q(snap.staged())}")[0]
+    last_load = f"timestamp '{_moment(latest).isoformat(sep=' ', timespec='microseconds')}'"
+    probes = {datetime(2013, 6, 1), datetime(2099, 1, 1)}
+    for vs in _dimension(snap).values():
+        probes |= {valid_from for valid_from, _, _ in vs}
+
+    wrong = []
+    for probe in sorted(probes):
+        when = at(probe.isoformat(sep=" ", timespec="seconds"))
+        point = f"select * from {PIT}({when})"
+        for positing in ("date '9999-12-31'", last_load):
+            known = f"select * from {TT}({when}, {positing})"
+            for one, other in ((known, point), (point, known)):
+                extra = snap.sql(f"select count(*) from ({one} except all {other})")[0][0]
+                if extra:
+                    wrong.append(f"`{one}` has {extra} rows `{other}` lacks")
+    assert not wrong, f"{len(wrong)} mismatches:\n" + "\n".join(wrong[:20])
+
+    held = _reliable_posits(snap)
+    first = {(identity, m): posits_[0][0] for identity, ms in held.items() for m, posits_ in ms.items() if posits_}
+    unknown_yet = 0
+    for probe in sorted(probes):
+        rows = tt(snap, at(probe.isoformat(sep=" ", timespec="seconds")), "date '9999-12-31'")
+        for (identity, m), since in first.items():
+            if probe < since:
+                unknown_yet += 1
+                value = rows[identity][attribute(m)]
+                assert value is None, f"tPR({probe}, late K) PR_ID {identity} {attribute(m)} is {value!r} before {since}"
+    assert unknown_yet > 0, "no probe fell before an attribute's first ChangedAt: EC4 is not exercised"
