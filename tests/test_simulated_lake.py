@@ -5,7 +5,8 @@ loads reach the workspace's lake one at a time, oldest load id first, with ``dbt
 each: the full seeded lake is simulated into a staging folder and its files are moved across in
 load-id order, so the builds see the same rows an empty-lake run writes (AC1).
 
-The answer serve gives is held to ``replay.on_sale``, computed from the lake's rows alone.
+The answer serve gives is held to ``replay.on_sale``, computed from the lake's rows alone, and the
+history every build holds to ``replay.products`` over the loads landed so far (story #4).
 """
 
 from __future__ import annotations
@@ -13,7 +14,8 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-from datetime import date
+from collections import defaultdict
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -21,13 +23,21 @@ import pytest
 
 import replay
 from harness import (
+    ATTRIBUTES,
+    PIT,
     REPO,
     RESOURCE,
     Snapshot,
     Workspace,
+    annex,
+    at,
+    attribute,
     dimension_column,
     integrity_violations,
     load_id,
+    pit,
+    pit_columns,
+    posit,
     q,
     tail,
     write_load,
@@ -212,3 +222,171 @@ def test_replay_applies_the_rules_to_story1_lake(tmp_path):
     assert on("SN-0009", "Name") == "Newcomer"
     assert on("SS-0008", "DiscontinuedDate") == date(2015, 1, 1)
     assert set(held) == {f"S{c}-000{i}" for c, i in zip("CNEGXABSN", range(1, 10))}
+
+
+# --------------------------------------------------------------------------- story #4: history in every layer
+
+# The contract's field each mnemonic loads, and the dimension column serve casts it into.
+FIELDS = {
+    "NUM": ("ProductNumber", "number"),
+    "NAM": ("Name", "name"),
+    "LIN": ("ProductLine", "line"),
+    "COL": ("Color", "color"),
+    "SST": ("SellStartDate", "sell_start"),
+    "SEN": ("SellEndDate", "sell_end"),
+    "DIS": ("DiscontinuedDate", "discontinued"),
+}
+DATE_MNEMONICS = ("SST", "SEN", "DIS")
+FIRST_VERSION = datetime(1, 1, 1)
+
+
+def _moment(value) -> datetime:
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None) if value.tzinfo is None else value.astimezone(UTC).replace(tzinfo=None)
+    return datetime(value.year, value.month, value.day)
+
+
+def _text(mnemonic: str, value):
+    if value is None:
+        return None
+    return str(value)[:10] if mnemonic in DATE_MNEMONICS else str(value)
+
+
+def _numbers(snap: Snapshot) -> dict:
+    """PR_ID -> ProductNumber, from the ProductNumber posits."""
+    m = "NUM"
+    pairs = snap.sql(f"select distinct PR_{m}_PR_ID, {q(attribute(m))} from integrate.{q(posit(m))}")
+    numbers = dict(pairs)
+    assert len(numbers) == len(pairs), "a PR_ID holds two ProductNumbers"
+    assert len(set(numbers.values())) == len(numbers), "a ProductNumber has two PR_IDs"
+    return numbers
+
+
+def _reliable_posits(snap: Snapshot) -> dict:
+    """PR_ID -> mnemonic -> [(ChangedAt, value as text)] of integrate's reliable positor-0 posits:
+    those whose latest positor-0 annex row, by PositedAt, has Reliability 1."""
+    held: dict = defaultdict(lambda: defaultdict(list))
+    for m in ATTRIBUTES:
+        rows = snap.sql(
+            f"select p.PR_{m}_PR_ID, p.PR_{m}_ChangedAt, p.{q(attribute(m))} "
+            f"from integrate.{q(posit(m))} p join ("
+            f"  select PR_{m}_ID, PR_{m}_Reliability, "
+            f"  row_number() over (partition by PR_{m}_ID order by PR_{m}_PositedAt desc) as newest "
+            f"  from integrate.{q(annex(m))} where PR_{m}_Positor = 0"
+            f") a on a.PR_{m}_ID = p.PR_{m}_ID and a.newest = 1 "
+            f"where a.PR_{m}_Reliability = 1"
+        )
+        for identity, changed_at, value in rows:
+            held[identity][m].append((_moment(changed_at), _text(m, value)))
+    for attributes in held.values():
+        for posits_ in attributes.values():
+            posits_.sort()
+    return held
+
+
+def _dimension(snap: Snapshot) -> dict:
+    """PR_ID as text -> [(valid_from, valid_to, {mnemonic: value as text})] in valid-from order."""
+    columns = {m: dimension_column(snap, what) for m, (_, what) in FIELDS.items()}
+    mnemonics = list(columns)
+    rows = snap.sql(
+        "select split_part(_key__product, '|', 1), product__valid_from, product__valid_to, "
+        + ", ".join(q(columns[m]) for m in mnemonics)
+        + " from serve__uss.product where _key__product like '%|%' order by 1, 2"
+    )
+    versions: dict = defaultdict(list)
+    for identity, valid_from, valid_to, *values in rows:
+        versions[identity].append(
+            (_moment(valid_from), _moment(valid_to), {m: _text(m, v) for m, v in zip(mnemonics, values)})
+        )
+    return versions
+
+
+def _lake_through(lake: Path, files: list[Path], target: Path) -> Path:
+    """A copy of ``lake`` holding only ``files``: the loads a build had seen."""
+    for source in files:
+        copy = target / source.relative_to(lake)
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, copy)
+    return target
+
+
+def test_history_matches_replay(simulated, tmp_path):
+    """AC5: at every one of the 7 builds, each product's reliable posits per attribute (ChangedAt, value)
+    equal the replay's over the loads landed so far, and the dimension's valid-froms per product equal
+    the union of the replay's reliable ChangedAts, each attribute's first moved to 0001-01-01."""
+    landed = sorted((simulated.ws.lake / RESOURCE).rglob("*.parquet"), key=_load_id_of)
+    assert len(landed) == BUILDS, landed
+    for n in range(BUILDS):
+        snap = simulated.snap(n)
+        lake = _lake_through(simulated.ws.lake, landed[: n + 1], tmp_path / f"build-{n}")
+        expected = replay.products(lake)
+        numbers = _numbers(snap)
+        held = _reliable_posits(snap)
+        versions = _dimension(snap)
+        assert sorted(numbers.values()) == sorted(expected), f"build {n + 1}: products differ from the replay's"
+        wrong = []
+        for identity, number in sorted(numbers.items(), key=lambda item: item[1]):
+            changed_ats = set()
+            for m, (field, _) in FIELDS.items():
+                want = [(_moment(c), _text(m, v)) for c, v in expected[number][field].reliable()]
+                got = held[identity][m]
+                if got != want:
+                    wrong.append(f"{number} {attribute(m)}: integrate {got}, replay {want}")
+                # Serve backfills each attribute's first value, not only the product's earliest, so an
+                # attribute first posited later than the others starts no version of its own.
+                changed_ats |= {FIRST_VERSION, *(c for c, _ in want[1:])} if want else set()
+            want_from = sorted(changed_ats)
+            got_from = [v[0] for v in versions[str(identity)]]
+            if got_from != want_from:
+                wrong.append(f"{number} valid-froms: dimension {got_from}, replay {want_from}")
+        assert not wrong, f"build {n + 1}, {len(wrong)} disagreements:\n" + "\n".join(wrong[:20])
+
+
+def test_pit_shape_every_simulated_build(simulated):
+    """AC1: after every simulated build, pPR_Product runs and returns lPR_Product's column names, in order."""
+    for n in range(BUILDS):
+        snap = simulated.snap(n)
+        when = at("2014-02-10 00:00:00")
+        assert pit_columns(snap, when) == snap.columns("integrate", "lPR_Product"), f"build {n + 1}"
+        snap.sql(f"select count(*) from {PIT}({when})")
+
+
+def test_pit_matches_dimension(simulated):
+    """AC6, EC6: after the last build, at every probe time (each valid-from, one second before each
+    valid-to, 2013-06-01, 2099-01-01), for every product and attribute, pPR's value equals the dimension
+    version valid then from the attribute's first reliable ChangedAt on, and is null before it."""
+    snap = simulated.snap(BUILDS - 1)
+    versions = _dimension(snap)
+    held = _reliable_posits(snap)
+    first = {(str(identity), m): posits_[0][0] for identity, ms in held.items() for m, posits_ in ms.items() if posits_}
+    probes = {datetime(2013, 6, 1), datetime(2099, 1, 1)}
+    for vs in versions.values():
+        for valid_from, valid_to, _ in vs:
+            probes |= {valid_from, valid_to - timedelta(seconds=1)}
+
+    wrong, compared, unbackfilled = [], 0, 0
+    for probe in sorted(probes):
+        rows = pit(snap, at(probe.isoformat(sep=" ", timespec="seconds")))
+        rows = {str(identity): record for identity, record in rows.items()}
+        assert set(rows) == set(versions), f"pPR({probe}) returns other identities than the dimension holds"
+        for identity, vs in versions.items():
+            valid = [v for f, t, v in vs if f <= probe < t]
+            assert len(valid) == 1, f"{identity} has {len(valid)} dimension versions valid at {probe}"
+            for m in FIELDS:
+                got = _text(m, rows[identity][attribute(m)])
+                since = first.get((identity, m))
+                if since is None or probe < since:
+                    want = None
+                    unbackfilled += valid[0][m] is not None
+                else:
+                    want = valid[0][m]
+                    compared += 1
+                if got != want:
+                    wrong.append(f"pPR({probe}) PR_ID {identity} {attribute(m)}: {got!r}, expected {want!r}")
+    assert not wrong, f"{len(wrong)} mismatches:\n" + "\n".join(wrong[:20])
+    assert compared > 1000, f"only {compared} values compared: the check proves little"
+    assert unbackfilled > 0, "no probe fell before a first ChangedAt where serve backfills: [2] is not exercised"
+
+    latest_rows, point = "select * from integrate.lPR_Product", f"select * from {PIT}({at('2099-01-01')})"
+    for one, other in ((latest_rows, point), (point, latest_rows)):
+        assert snap.sql(f"select count(*) from ({one} except all {other})") == [(0,)], f"`{one}` has rows `{other}` lacks"

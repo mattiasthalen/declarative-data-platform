@@ -15,7 +15,8 @@ order and, within a load, rows in ``ModifiedDate`` order:
   is not loaded;
 - a key's lone row that repeats its lone row in the load before is not applied again.
 
-The value on day D is the reliable value with the latest ChangedAt on or before D, else the
+``reliable()`` reads the reliable posits as they are, without a backfill (story #4). The value on
+day D is the reliable value with the latest ChangedAt on or before D, else the
 earliest reliable value (ADR-0011's first version). A product is on sale on D as #1's approved
 business question defines it: sell start on or before D, sell end null or on or after D,
 discontinued null or after D. ``on_sale`` counts those products per product line and colour.
@@ -32,6 +33,7 @@ RESOURCE = "adventure_works__products"
 
 # Each attribute PR_Product loads, as conform casts it: JSON field -> SQL over the field's text.
 ATTRIBUTES = {
+    "ProductNumber": "{}",
     "Name": "{}",
     "ProductLine": "trim({})",
     "Color": "{}",
@@ -102,6 +104,11 @@ class _Attribute:
                 p[2] = 1
         if asserts and not posited:
             self.state.append([changed_at, value, 1])
+
+    def reliable(self) -> list[tuple]:
+        """(ChangedAt, value) of every reliable posit, in ChangedAt order: what integrate holds, before
+        ``on()``'s backfill of the earliest value, which is serve's alone."""
+        return sorted(((p[0], p[1]) for p in self.state if p[2] == 1), key=lambda p: p[0])
 
     def on(self, day: date):
         reliable = [p for p in self.state if p[2] == 1]
