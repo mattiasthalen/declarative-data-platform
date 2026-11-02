@@ -383,26 +383,18 @@ join {{ ref(a.annex) }} x on x."{{ m }}_ID" = p."{{ m }}_ID"
 
 
 {#- The latest version of one attribute per identity: of positor 0's latest annex row for each
-    posit, the reliable ones, and of those the latest ChangedAt. -#}
-{% macro anchor_latest(a) -%}
+    posit, the reliable ones, and of those the latest ChangedAt. With `changed_by`, a SQL expression
+    such as the point-in-time perspective's parameter, only posits that changed at or before it
+    count, so nothing shows before the attribute's first ChangedAt (ADR-0030). -#}
+{% macro anchor_latest(a, changed_by=none) -%}
     {%- set m = a.mnemonic -%}
 select *
 from {{ ref(a.name) }}
 where "{{ m }}_Positor" = 0
+{%- if changed_by %}
+  and "{{ m }}_ChangedAt" <= {{ changed_by }}
+{%- endif %}
 qualify row_number() over (partition by "{{ m }}_ID" order by "{{ m }}_PositedAt" desc) = 1
     and "{{ m }}_Reliable" = 1
 {%- endmacro %}
 
-
-{#- The version of one attribute per identity in effect at `changingTimepoint`, the parameter of
-    the point-in-time perspective's table macro: anchor_latest among the posits that changed at or
-    before it. Nothing before the attribute's first ChangedAt (ADR-0030). -#}
-{% macro anchor_point_in_time(a) -%}
-    {%- set m = a.mnemonic -%}
-select *
-from {{ ref(a.name) }}
-where "{{ m }}_Positor" = 0
-  and "{{ m }}_ChangedAt" <= changingTimepoint
-qualify row_number() over (partition by "{{ m }}_ID" order by "{{ m }}_PositedAt" desc) = 1
-    and "{{ m }}_Reliable" = 1
-{%- endmacro %}

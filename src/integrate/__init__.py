@@ -406,11 +406,11 @@ def anchor_files(anchor: Anchor, attributes: list[Attribute], identifier: Attrib
     files[f"l{anchor.name}.sql"] = view(
         f"The latest perspective of {anchor.name}: per identity, each attribute's latest reliable "
         "value as positor 0 states it now.",
-        perspective(anchor, attributes, "anchor_latest"),
+        perspective(anchor, attributes),
     )
     files[f"p{anchor.name}.sql"] = model(
         "materialized='table_macro', parameters=['changingTimepoint']",
-        perspective(anchor, attributes, "anchor_point_in_time"),
+        perspective(anchor, attributes, changed_by="changingTimepoint"),
         comment=f"The point-in-time perspective of {anchor.name}, a table macro taking changingTimepoint: per "
         "identity, each attribute's latest reliable value as positor 0 states it, of those that changed at or "
         "before changingTimepoint; nothing before an attribute's first ChangedAt (ADR-0030).",
@@ -419,10 +419,11 @@ def anchor_files(anchor: Anchor, attributes: list[Attribute], identifier: Attrib
     return files
 
 
-def perspective(anchor: Anchor, attributes: list[Attribute], version_macro: str) -> str:
-    """The latest or point-in-time perspective's select: the anchor joined to each attribute's
-    version in effect, as ``version_macro`` (``anchor_latest`` or ``anchor_point_in_time``) picks it."""
+def perspective(anchor: Anchor, attributes: list[Attribute], changed_by: str | None = None) -> str:
+    """The latest perspective's select, the anchor joined to each attribute's latest version; with
+    ``changed_by``, the point-in-time perspective's, as of that SQL expression."""
     joins, columns = [], [f'    p."{anchor.id}"', f'    p."Metadata_{anchor.mnemonic}"']
+    cutoff = f", '{changed_by}'" if changed_by else ""
     for t in attributes:
         m = t.prefix
         alias = t.mnemonic.lower()
@@ -437,7 +438,7 @@ def perspective(anchor: Anchor, attributes: list[Attribute], version_macro: str)
             f'    {alias}."{t.name}"',
         ]
         joins.append(
-            f"left join (\n    select * from (\n        {{{{ {version_macro}({{'mnemonic': '{m}', 'name': '{t.name}'}}) }}}}\n    )\n"
+            f"left join (\n    select * from (\n        {{{{ anchor_latest({{'mnemonic': '{m}', 'name': '{t.name}'}}{cutoff}) }}}}\n    )\n"
             f'    qualify row_number() over (partition by "{m}_{anchor.id}" order by "{m}_ChangedAt" desc) = 1\n'
             f') {alias} on {alias}."{m}_{anchor.id}" = p."{anchor.id}"'
         )

@@ -62,43 +62,43 @@ select
 from {{ ref('PR_Product') }} p
 left join (
     select * from (
-        {{ anchor_point_in_time({'mnemonic': 'PR_NUM', 'name': 'PR_NUM_Product_ProductNumber'}) }}
+        {{ anchor_latest({'mnemonic': 'PR_NUM', 'name': 'PR_NUM_Product_ProductNumber'}, 'changingTimepoint') }}
     )
     qualify row_number() over (partition by "PR_NUM_PR_ID" order by "PR_NUM_ChangedAt" desc) = 1
 ) num on num."PR_NUM_PR_ID" = p."PR_ID"
 left join (
     select * from (
-        {{ anchor_point_in_time({'mnemonic': 'PR_NAM', 'name': 'PR_NAM_Product_Name'}) }}
+        {{ anchor_latest({'mnemonic': 'PR_NAM', 'name': 'PR_NAM_Product_Name'}, 'changingTimepoint') }}
     )
     qualify row_number() over (partition by "PR_NAM_PR_ID" order by "PR_NAM_ChangedAt" desc) = 1
 ) nam on nam."PR_NAM_PR_ID" = p."PR_ID"
 left join (
     select * from (
-        {{ anchor_point_in_time({'mnemonic': 'PR_LIN', 'name': 'PR_LIN_Product_ProductLine'}) }}
+        {{ anchor_latest({'mnemonic': 'PR_LIN', 'name': 'PR_LIN_Product_ProductLine'}, 'changingTimepoint') }}
     )
     qualify row_number() over (partition by "PR_LIN_PR_ID" order by "PR_LIN_ChangedAt" desc) = 1
 ) lin on lin."PR_LIN_PR_ID" = p."PR_ID"
 left join (
     select * from (
-        {{ anchor_point_in_time({'mnemonic': 'PR_COL', 'name': 'PR_COL_Product_Color'}) }}
+        {{ anchor_latest({'mnemonic': 'PR_COL', 'name': 'PR_COL_Product_Color'}, 'changingTimepoint') }}
     )
     qualify row_number() over (partition by "PR_COL_PR_ID" order by "PR_COL_ChangedAt" desc) = 1
 ) col on col."PR_COL_PR_ID" = p."PR_ID"
 left join (
     select * from (
-        {{ anchor_point_in_time({'mnemonic': 'PR_SST', 'name': 'PR_SST_Product_SellStart'}) }}
+        {{ anchor_latest({'mnemonic': 'PR_SST', 'name': 'PR_SST_Product_SellStart'}, 'changingTimepoint') }}
     )
     qualify row_number() over (partition by "PR_SST_PR_ID" order by "PR_SST_ChangedAt" desc) = 1
 ) sst on sst."PR_SST_PR_ID" = p."PR_ID"
 left join (
     select * from (
-        {{ anchor_point_in_time({'mnemonic': 'PR_SEN', 'name': 'PR_SEN_Product_SellEnd'}) }}
+        {{ anchor_latest({'mnemonic': 'PR_SEN', 'name': 'PR_SEN_Product_SellEnd'}, 'changingTimepoint') }}
     )
     qualify row_number() over (partition by "PR_SEN_PR_ID" order by "PR_SEN_ChangedAt" desc) = 1
 ) sen on sen."PR_SEN_PR_ID" = p."PR_ID"
 left join (
     select * from (
-        {{ anchor_point_in_time({'mnemonic': 'PR_DIS', 'name': 'PR_DIS_Product_Discontinued'}) }}
+        {{ anchor_latest({'mnemonic': 'PR_DIS', 'name': 'PR_DIS_Product_Discontinued'}, 'changingTimepoint') }}
     )
     qualify row_number() over (partition by "PR_DIS_PR_ID" order by "PR_DIS_ChangedAt" desc) = 1
 ) dis on dis."PR_DIS_PR_ID" = p."PR_ID"
