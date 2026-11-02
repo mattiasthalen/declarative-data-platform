@@ -1,6 +1,6 @@
 # ADR-0029 — Ship the README's artwork as SVG committed under docs/
 
-**Status:** Accepted (2026-11-01)
+**Status:** Accepted (2026-11-01); partly superseded by [ADR-0032](0032-keep-the-readmes-artwork-in-assets-at-the-repo-root.md) (location under `docs/`, 2026-11-02)
 
 ## Context
 
