@@ -4,7 +4,8 @@ Each case runs a headless ``claude -p`` session in a throwaway copy of the repo,
 one file, and reads back what Claude Code reported to its ``InstructionsLoaded`` hook, and to
 a ``PostToolUse`` hook on Read that proves the file was read. The hooks live in a settings
 file passed with ``--settings``, so neither the working tree nor the user's Claude settings
-are touched. Run with ``uv run pytest -m claude``; the default run deselects it.
+are touched. Run with ``uv run task test-rules`` (``uv run pytest -m claude -n 0``, one
+session at a time); the default run deselects it.
 """
 
 from __future__ import annotations

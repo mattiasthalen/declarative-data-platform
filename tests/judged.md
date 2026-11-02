@@ -343,8 +343,9 @@ Pass when all of these hold:
    them, on the head commit (the evidence shows `git rev-parse HEAD` and a clean
    `git status`).
 2. Each run is a plain `uv run pytest`: no `-n`, `-k`, `-m`, `--lf`, `-x` or path argument.
-3. Each run's summary line reads `N passed` (with the `claude` tests deselected), with the
-   same N in all five, and none names `failed` or `error`.
+3. Each run's summary line reads `N passed`, with the same N in all five, and none names
+   `failed` or `error`. (Under xdist the summary does not print the deselected count; that
+   the `claude` tests stay deselected is judged in AC9.)
 4. The evidence gives each run's wall time.
 
 ## AC9: the parallel run passes what the serial run passed
@@ -361,8 +362,11 @@ Pass when all of these hold:
    tests in `tests/test_ci_workflow.py`), and the base list minus the head list is empty.
    The base list has 218 ids, or the evidence says why the count differs.
 3. Neither run has a `FAILED` or `ERROR` line.
-4. Both runs report the same number of deselected tests, and the deselected tests are the
-   `claude` ones (`tests/test_rules_load.py`), in both.
+4. The same `claude` tests (`tests/test_rules_load.py`) are deselected at both commits. Under
+   xdist the parallel run's summary does not print a deselected count, so the evidence shows
+   `uv run pytest --collect-only -q` at the base and at the head (xdist turns itself off for
+   collection, so each prints `x/y tests collected (n deselected)`) with the same n, and no
+   `tests/test_rules_load.py` id among either run's `PASSED` lines.
 
 ## AC10: the records
 
