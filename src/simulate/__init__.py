@@ -186,9 +186,13 @@ class Simulation:
             return f"{current or row[KEY]} {rng.choice(('II', 'Pro', 'Lite', 'Plus', 'Sport'))}"
         if attribute in DATES:
             # Kept in order: a sell start moves earlier, an end lands 1 to 1501 days after the sell start.
-            start = parse_date(row.get("SellStartDate")) or date(2013, 1, 1)
+            start = parse_date(row.get("SellStartDate"))
             if attribute == "SellStartDate":
-                return (start - timedelta(days=rng.randint(1, 365))).isoformat()
+                # A null start moves back from the earliest end date, so it never lands after one.
+                ends = [d for d in (parse_date(row.get(a)) for a in DATES[1:]) if d is not None]
+                base = start or min(ends, default=date(2013, 1, 1))
+                return (base - timedelta(days=rng.randint(1, 365))).isoformat()
+            start = start or date(2013, 1, 1)
             ended = (start + timedelta(days=rng.randint(1, 1500))).isoformat()
             return ended if ended != current else (start + timedelta(days=1501)).isoformat()
         choices = [value for value in self.values(attribute) if value != current]
