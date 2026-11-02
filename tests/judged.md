@@ -321,8 +321,10 @@ reads the evidence named in each and records pass or fail for each line below.
 
 Three runs of the PR's head commit: the push and two re-runs ([7], [8]), each set against the
 serial `test` job of the PR's base commit: the `main` push run of that base SHA, which ran
-before `-n auto` existed. The spec was amended on 2026-11-02 from 4 minutes to 6, and then
-from 6 minutes to this ratio (Mattias, decision card 09:14Z).
+before `-n auto` existed. The spec was amended on 2026-11-02 from 4 minutes to 6, then
+from 6 minutes to this ratio (Mattias, decision card 09:14Z), and then from each run to the
+median of the three, because runner noise is about a minute either way (Mattias, decision
+card 13:04Z).
 
 Pass when all of these hold:
 
@@ -335,9 +337,9 @@ Pass when all of these hold:
    three distinct runs), and the `test` job of each has conclusion `success`.
 3. The `test` job of the base's `main` run has conclusion `success`, and the evidence states
    its duration, `completed_at` minus `started_at`.
-4. Each head `test` job's duration, `completed_at` minus `started_at`, is at most half the
-   base's duration. The evidence lists all three head durations, each with its ratio to the
-   base's duration.
+4. The median of the three head `test` jobs' durations, each `completed_at` minus
+   `started_at`, is at most half the base's duration. The evidence lists all three head
+   durations, each with its ratio to the base's duration, and the median.
 5. Each head job ran the committed `uv run pytest` step unchanged: no re-run with debug
    options, a changed workflow, or `-n` passed by hand.
 
@@ -383,14 +385,14 @@ Pass when all of these hold:
 Pass when all of these hold:
 
 1. `docs/assumptions.md` row A8 reads as the spec's restated A8: the `test` job, run in
-   parallel, takes at most half as long as the same suite run serially (`-n 0`), on a
-   GitHub-hosted `ubuntu-latest` runner with 4 CPUs while the repository is public. It stops
-   holding when the job takes more than half the serial time, or when `psutil` enters
-   `uv.lock`. It says `loadgroup` is not the fix, having measured slower in the sandbox
-   (7m05s against 4m54s), and names no `loadgroup` remedy. It says that for story #35 the
-   serial time is its base's `test` job on `main`, the last one run before `-n auto`. The
-   standing wording does not tie the serial time to a `main` run, since `main` runs in
-   parallel once this merges.
+   parallel, takes at most half as long, as the median of three runs on one commit, as the
+   same suite run serially (`-n 0`), on a GitHub-hosted `ubuntu-latest` runner with 4 CPUs
+   while the repository is public. It stops holding when the median of three `test` jobs on
+   one commit takes more than half the serial time, or when `psutil` enters `uv.lock`. It
+   says `loadgroup` is not the fix, having measured slower in the sandbox (7m05s against
+   4m54s), and names no `loadgroup` remedy. It says that for story #35 the serial time is its
+   base's `test` job on `main`, the last one run before `-n auto`. The standing wording does
+   not tie the serial time to a `main` run, since `main` runs in parallel once this merges.
 2. Rows A25 (two xdist workers never get the same free port) and A26 (every test is
    independent of the others) appear with the spec's assumption, area `ci` and
    "stopped holding" text. A wording change is fine only where the build proved the spec

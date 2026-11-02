@@ -22,4 +22,4 @@ The seeded simulator's lake (ADR-0027) runs beside the hand-written synthetic la
 
 ## Addendum 2026-11-02
 
-The `test` job's `uv run pytest` runs the suite across one pytest-xdist worker per CPU (`-n auto` in `addopts`). On a 4-core `ubuntu-latest` runner the job took 5 min 7 s to 5 min 9 s on PR #41, against 10 min 55 s serially on `main` the day before.
+The `test` job's `uv run pytest` runs the suite across one pytest-xdist worker per CPU (`-n auto` in `addopts`). On a 4-core `ubuntu-latest` runner the job took a median of 6 min 39 s over three attempts on PR #41 (7 min 42 s, 6 min 28 s, 6 min 39 s), against 14 min 06 s serially on its base on `main`.
