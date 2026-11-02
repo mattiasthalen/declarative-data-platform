@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import itertools
 import math
 from pathlib import Path
 
@@ -143,14 +144,22 @@ def tile(i: int) -> str:
 
 # The first trail, from the raw tiles to the pages: (x, its rest opacity in the still).
 FEED = [(426, 0.18), (436, 0.32), (446, 0.46)]
-FEED_EVERY = 11
+MOVES = (RAW_HELD, GRID_OUT, ANCHOR_OUT)
+# Percent of the run between one dot of a wave lighting and the next, raw to shape.
+WAVE_STEP = 2
 
 
 def feed_points(dot: int, rest: float) -> list[tuple[float, float]]:
-    """Data coming in: a pulse runs along the trail, raw to pages, every FEED_EVERY percent until the star forms."""
+    """Data coming in: a pulse runs along the trail, raw to pages, until the star forms.
+
+    The pulse at each move runs on into the second trail, one wave from raw to shape;
+    another pulse runs halfway between moves.
+    """
+    synced = [move - 3 for move in MOVES]
+    starts = sorted(synced + [(a + b) / 2 for a, b in itertools.pairwise(synced)])
     points = [(0, rest)]
-    for start in range(0, STAR_IN + 1, FEED_EVERY):
-        peak = start + 2 + 2 * dot
+    for start in starts:
+        peak = start + 2 + WAVE_STEP * dot
         points += [(peak - 2, rest), (peak, 1), (peak + 3, rest)]
     return list(dict(points + [(100, rest)]).items())
 
@@ -162,8 +171,8 @@ TRAIL = [(525, 0.5), (535, 0.65), (545, 0.8)]
 def trail_points(dot: int, rest: float) -> list[tuple[float, float]]:
     """Dark until the first shape forms; on each move it drops and reconnects dot by dot, pages to shape."""
     points = [(0, 0)]
-    for move in (RAW_HELD, GRID_OUT, ANCHOR_OUT):
-        lit = move + 3 + 2 * dot
+    for move in MOVES:
+        lit = move + 3 + WAVE_STEP * dot
         points += [(move, 0 if move == RAW_HELD else rest), (move + 1, 0), (lit, 0), (lit + 2, rest)]
     return list(dict(points + [(100, rest)]).items())
 
