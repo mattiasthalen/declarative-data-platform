@@ -22,7 +22,7 @@ BPM = 96
 BEAT = 60 / BPM
 BAR = 4 * BEAT  # 2.5 s: every chapter starts on a bar
 BED = 10 ** (-3 / 20)  # the whole score sits a little under the voice
-DUCK = 10 ** (-12 / 20)  # and further down while a line is spoken
+DUCK = 10 ** (-9 / 20)  # and further down while a line is spoken
 DUCK_LEAD, DUCK_RELEASE = 0.3, 1.0
 BRIDGE = 1.5  # lines closer than this stay under one duck, so the score doesn't swell between them
 
@@ -223,7 +223,8 @@ def _reverb(send: np.ndarray, rng) -> np.ndarray:
 
 
 def _ducking(t: np.ndarray, cues: list[tuple[float, float]]) -> np.ndarray:
-    """1 away from speech, DUCK while a line is spoken, with short ramps either side."""
+    """1 away from speech, DUCK while a line is spoken, ramped in over DUCK_LEAD and out over
+    DUCK_RELEASE; lines closer than BRIDGE share one duck."""
     depth = np.zeros_like(t)
     for start, end in _bridged(cues):
         rise = np.clip((t - (start - DUCK_LEAD)) / DUCK_LEAD, 0, 1)

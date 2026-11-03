@@ -78,6 +78,8 @@ def synthesizer(models: Path, voice: str, speed: float, lang: str) -> Callable[[
         """Kokoro runs a question straight into its answer, so each question inside a line is
         spoken on its own, with QUESTION_PAUSE of silence before the rest."""
         parts = [part.strip() for part in re.split(r"(?<=\?)\s+", text.strip()) if part.strip()]
+        if not parts:
+            raise ValueError(f"a narration line has no words to speak: {text!r}")
         pause = np.zeros(int(round(QUESTION_PAUSE * KOKORO_RATE)), dtype=np.float32)
         pieces = []
         for number, part in enumerate(parts):
