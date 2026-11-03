@@ -15,3 +15,7 @@ Rejected: PNG, which is soft when GitHub scales it unless exported at two or thr
 ## Consequences
 
 The artwork scales sharply to any width, reviews as a text diff, and #38 can build on the same file instead of a separate asset. Everything the README shows lives in the repository. SVG shown through an image tag may fetch nothing from outside and cannot see GitHub's theme, so each file must carry its own fonts and its own ground; those choices are made per story and recorded in its PR. A social-preview PNG, if wanted, is exported from the SVG by hand and set in the repository's settings.
+
+## Addendum 2026-11-02
+
+Story #39's explainer is a video with sound, so it is not README artwork in this decision's sense: the README links it rather than showing it. It is rendered from the repository by CI and published on a release, which keeps it rebuildable with the README; see [ADR-0034](0034-render-the-explainer-in-ci-and-publish-it-on-a-rolling-release.md).
