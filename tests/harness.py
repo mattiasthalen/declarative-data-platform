@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -424,6 +424,59 @@ def pit(snap: Snapshot, when: str) -> dict:
         assert record["PR_ID"] not in out, f"pPR({when}) returns PR_ID {record['PR_ID']} twice"
         out[record["PR_ID"]] = record
     return out
+
+
+# --------------------------------------------------------------------------- the time-traveling perspective
+
+# tPR_Product(changingTimepoint, positingTimepoint): pPR_Product's rows as known at the positing
+# time, from the annex rows whose PositedAt is at or before it. Also a table macro.
+TT = 'integrate."tPR_Product"'
+
+
+def posited_at(load: str, offset_us: int = 0) -> datetime:
+    """``load``'s PositedAt, its ``_dlt__extracted_at``, moved by ``offset_us``, as a naive UTC datetime."""
+    return datetime(1970, 1, 1) + timedelta(microseconds=epoch_us(load) + offset_us)
+
+
+def timestamp(moment: datetime) -> str:
+    """A timestamp literal for a naive UTC datetime, to the microsecond."""
+    return f"timestamp '{moment.isoformat(sep=' ', timespec='microseconds')}'"
+
+
+def posited(load: str, offset_us: int = 0) -> str:
+    """A timestamp literal for ``posited_at(load, offset_us)``."""
+    return timestamp(posited_at(load, offset_us))
+
+
+def naive_utc(value: datetime) -> datetime:
+    """``value`` as a naive UTC datetime: DuckDB hands a timestamptz back in the local zone."""
+    return value if value.tzinfo is None else value.astimezone(UTC).replace(tzinfo=None)
+
+
+def tt_columns(snap: Snapshot, changing: str, positing: str) -> list[str]:
+    """tPR's column names, in order, for a call with the SQL expressions ``changing`` and ``positing``."""
+    return [r[0] for r in snap.sql(f"describe select * from {TT}({changing}, {positing})")]
+
+
+def tt(snap: Snapshot, changing: str, positing: str) -> dict:
+    """PR_ID -> {column: value} of every row tPR returns for ``changing`` and ``positing``."""
+    columns = tt_columns(snap, changing, positing)
+    out = {}
+    for row in snap.sql(f"select * from {TT}({changing}, {positing})"):
+        record = dict(zip(columns, row))
+        assert record["PR_ID"] not in out, f"tPR({changing}, {positing}) returns PR_ID {record['PR_ID']} twice"
+        out[record["PR_ID"]] = record
+    return out
+
+
+def same_rows(snap: Snapshot, one: str, other: str) -> list[str]:
+    """Both ways of ``except all`` between two queries, and their counts: empty when they hold the same rows."""
+    found = []
+    for a, b in ((one, other), (other, one)):
+        extra = snap.sql(f"select count(*) from ({a} except all {b})")[0][0]
+        if extra:
+            found.append(f"`{a}` has {extra} rows `{b}` lacks")
+    return found
 
 
 # --------------------------------------------------------------------------- the USS

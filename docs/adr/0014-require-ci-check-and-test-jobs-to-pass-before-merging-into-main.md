@@ -19,3 +19,7 @@ A pull request cannot merge while drifted or red. Job names `check` and `test` a
 ## Addendum (2026-11-01, story #25)
 
 The seeded simulator's lake (ADR-0027) runs beside the hand-written synthetic lakes in the same `test` job, not instead of them: each hand-written lake pins one exact scenario, while the simulated lake checks that a longer, seeded history builds and answers the business question.
+
+## Addendum 2026-11-02
+
+The `test` job's `uv run pytest` runs the suite across one pytest-xdist worker per CPU (`-n auto` in `addopts`). On a 4-core `ubuntu-latest` runner the job took a median of 6 min 39 s over three attempts on PR #41 (7 min 42 s, 6 min 28 s, 6 min 39 s), against 14 min 06 s serially on its base on `main`.

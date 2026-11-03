@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -27,6 +27,7 @@ from harness import (
     PIT,
     REPO,
     RESOURCE,
+    TT,
     Snapshot,
     Workspace,
     annex,
@@ -39,10 +40,14 @@ from harness import (
     pit_columns,
     posit,
     q,
+    same_rows,
     tail,
+    timestamp,
+    tt,
+    tt_columns,
     write_load,
 )
-from test_end_to_end import base_products, business_products, load_3, load_4, load_5
+from test_end_to_end import _attribute_columns, base_products, business_products, load_3, load_4, load_5
 
 SNAPSHOT = REPO / "src" / "simulate" / "adventure_works__products.jsonl"
 BUILDS = 7  # the snapshot load, then six changed loads
@@ -390,3 +395,109 @@ def test_pit_matches_dimension(simulated):
     latest_rows, point = "select * from integrate.lPR_Product", f"select * from {PIT}({at('2099-01-01')})"
     for one, other in ((latest_rows, point), (point, latest_rows)):
         assert snap.sql(f"select count(*) from ({one} except all {other})") == [(0,)], f"`{one}` has rows `{other}` lacks"
+
+
+# --------------------------------------------------------------------------- story #5: tPR_Product
+
+
+def _latest_posited(snap: Snapshot) -> datetime:
+    """The latest ``_dlt__extracted_at`` conform holds: the PositedAt of the last load ``snap``'s build had seen."""
+    (latest,) = snap.sql(f"select max(_dlt__extracted_at) from conform.{q(snap.staged())}")[0]
+    return _moment(latest)
+
+
+def _tt_probes(snap: Snapshot) -> set[datetime]:
+    """Each dimension valid-from, 2013-06-01 and 2099-01-01."""
+    probes = {datetime(2013, 6, 1), datetime(2099, 1, 1)}
+    for vs in _dimension(snap).values():
+        probes |= {valid_from for valid_from, _, _ in vs}
+    return probes
+
+
+def test_tt_equals_pit_simulated(simulated):
+    """Story #5 AC4, EC4: after the last build, tPR(T, K) with K at or after the latest load's PositedAt
+    equals pPR(T) row for row, for T at each dimension valid-from, 2013-06-01 and 2099-01-01; before an
+    attribute's first ChangedAt it shows no value, as pPR does."""
+    snap = simulated.snap(BUILDS - 1)
+    last_load = timestamp(_latest_posited(snap))
+    probes = _tt_probes(snap)
+
+    wrong = []
+    for probe in sorted(probes):
+        when = at(probe.isoformat(sep=" ", timespec="seconds"))
+        point = f"select * from {PIT}({when})"
+        for positing in ("date '9999-12-31'", last_load):
+            wrong += same_rows(snap, f"select * from {TT}({when}, {positing})", point)
+    assert not wrong, f"{len(wrong)} mismatches:\n" + "\n".join(wrong[:20])
+
+    held = _reliable_posits(snap)
+    first = {(identity, m): posits_[0][0] for identity, ms in held.items() for m, posits_ in ms.items() if posits_}
+    unknown_yet = 0
+    for probe in sorted(probes):
+        rows = tt(snap, at(probe.isoformat(sep=" ", timespec="seconds")), "date '9999-12-31'")
+        for (identity, m), since in first.items():
+            if probe < since:
+                unknown_yet += 1
+                value = rows[identity][attribute(m)]
+                assert value is None, f"tPR({probe}, late K) PR_ID {identity} {attribute(m)} is {value!r} before {since}"
+    assert unknown_yet > 0, "no probe fell before an attribute's first ChangedAt: EC4 is not exercised"
+
+
+def _source_null_retractions(lake: Path, landed: list[Path], tmp_path: Path) -> list[str]:
+    """The replay's source-null retractions of a version that had an earlier reliable one, by a load before
+    the last: a load that turned a reliable posit unreliable and made none reliable, leaving one with an
+    earlier ChangedAt."""
+    found = []
+    before = replay.products(_lake_through(lake, landed[:1], tmp_path / "through-0"))
+    for n in range(1, len(landed) - 1):
+        after = replay.products(_lake_through(lake, landed[: n + 1], tmp_path / f"through-{n}"))
+        for number, fields in after.items():
+            for field, held in fields.items():
+                was = set(before[number][field].reliable()) if number in before else set()
+                now = set(held.reliable())
+                if now - was or not was - now:
+                    continue
+                for retracted, _ in was - now:
+                    if any(c < retracted for c, _ in now):
+                        found.append(f"load {n + 1}: {number} {field} at {retracted}")
+        before = after
+    return found
+
+
+def test_tt_known_at_each_build(simulated, tmp_path):
+    """Story #5 AC10, AC3: after the last build, tPR(T, K_i), with K_i the PositedAt of the last load build i
+    had seen, equals build i's pPR(T) row for row, for every build i and the T's test_tt_equals_pit_simulated
+    uses. Identities first posited after K_i are the only extra rows, every attribute null (EC1). The lake
+    holds a source null that lets an earlier version show again, before the last load."""
+    landed = sorted((simulated.ws.lake / RESOURCE).rglob("*.parquet"), key=_load_id_of)
+    assert len(landed) == BUILDS, landed
+    retractions = _source_null_retractions(simulated.ws.lake, landed, tmp_path)
+    assert retractions, "no load before the last retracts a version with an earlier one: AC3's 'if any' is not exercised"
+
+    last = simulated.snap(BUILDS - 1)
+    probes = sorted(_tt_probes(last))
+    wrong, compared = [], 0
+    for n in range(BUILDS):
+        then = simulated.snap(n)
+        known_at = timestamp(_latest_posited(then))
+        held_then = {r[0] for r in then.sql("select PR_ID from integrate.PR_Product")}
+        for probe in probes:
+            when = timestamp(probe)
+            columns = tt_columns(last, when, known_at)
+            assert columns == pit_columns(then, when), f"build {n + 1}: tPR's columns differ from pPR's then"
+            known = tt(last, when, known_at)
+            later = [r for pid, r in known.items() if pid not in held_then]
+            valued = [(r["PR_ID"], c) for r in later for c in _attribute_columns(columns) if r[c] is not None]
+            if valued:
+                wrong.append(f"build {n + 1}, T {probe}: identities posited after K hold values: {valued[:5]}")
+            got = Counter(tuple(r.values()) for pid, r in known.items() if pid in held_then)
+            want = Counter(tuple(r.values()) for r in pit(then, when).values())
+            compared += sum(want.values())
+            if got != want:
+                missing, extra = want - got, got - want
+                wrong.append(
+                    f"build {n + 1}, T {probe}: tPR at the last build lacks {sum(missing.values())} of pPR's rows "
+                    f"then and has {sum(extra.values())} more, e.g. lacks {list(missing)[:1]}, has {list(extra)[:1]}"
+                )
+    assert not wrong, f"{len(wrong)} mismatches:\n" + "\n".join(wrong[:20])
+    assert compared > 1000, f"only {compared} rows compared: the check proves little"

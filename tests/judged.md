@@ -312,6 +312,111 @@ line below.
 
 A browser that keeps the hero still with motion allowed, or moves it with reduced motion requested, breaks assumption A27 (`docs/assumptions.md`): record which, and the still it should have shown.
 
+# Judged checks for story #35 (the suite runs in parallel)
+
+Four acceptance criteria and one edge case are judged at review rather than run. The reviewer
+reads the evidence named in each and records pass or fail for each line below.
+
+## AC7: the CI `test` job, green in at most half the serial time
+
+Three runs of the PR's head commit: the push and two re-runs ([7], [8]), each set against the
+serial `test` job of the PR's base commit: the `main` push run of that base SHA, which ran
+before `-n auto` existed. The spec was amended on 2026-11-02 from 4 minutes to 6, then
+from 6 minutes to this ratio (Mattias, decision card 09:14Z), and then from each run to the
+median of the three, because runner noise is about a minute either way (Mattias, decision
+card 13:04Z).
+
+Pass when all of these hold:
+
+1. The evidence reads the runs from the GitHub Actions API (`gh run list --commit <sha>`,
+   `gh run view <id> --json jobs`, or `/repos/{owner}/{repo}/actions/runs/{id}/jobs`), not
+   from memory or a screenshot of a different commit. It does so for the head runs and for
+   the base's `main` run, and shows both SHAs; the base SHA is the PR's base commit, and its
+   run is a `push` run on `main`.
+2. There are three attempts of the `ci` workflow on the head SHA (run attempts 1, 2 and 3, or
+   three distinct runs), and the `test` job of each has conclusion `success`.
+3. The `test` job of the base's `main` run has conclusion `success`, and the evidence states
+   its duration, `completed_at` minus `started_at`.
+4. The median of the three head `test` jobs' durations, each `completed_at` minus
+   `started_at`, is at most half the base's duration. The evidence lists all three head
+   durations, each with its ratio to the base's duration, and the median.
+5. Each head job ran the committed `uv run pytest` step unchanged: no re-run with debug
+   options, a changed workflow, or `-n` passed by hand.
+
+## AC8: five full runs in a row, all green
+
+Five consecutive full `uv run pytest` runs in the sandbox, on the head commit ([8]).
+
+Pass when all of these hold:
+
+1. One script ran the five runs back to back, with no edits, retries or skipped runs between
+   them, on the head commit (the evidence shows `git rev-parse HEAD` and a clean
+   `git status`).
+2. Each run is a plain `uv run pytest`: no `-n`, `-k`, `-m`, `--lf`, `-x` or path argument.
+3. Each run's summary line reads `N passed`, with the same N in all five, and none names
+   `failed` or `error`. (Under xdist the summary does not print the deselected count; that
+   the `claude` tests stay deselected is judged in AC9.)
+4. The evidence gives each run's wall time.
+
+## AC9: the parallel run passes what the serial run passed
+
+The passed node ids of `uv run pytest -n 0 -rA` at the base equal those of `uv run pytest -rA`
+at the head, except for tests this change adds ([8]).
+
+Pass when all of these hold:
+
+1. The evidence holds both lists of `PASSED` node ids, sorted, from the base commit and the
+   head commit, with their SHAs; the base run used `-n 0` (or the base's own serial default)
+   and the head run used no `-n`.
+2. The head list minus the base list is exactly the tests this change adds (the new
+   tests in `tests/test_ci_workflow.py`), and the base list minus the head list is empty.
+   The base list has 218 ids, or the evidence says why the count differs.
+3. Neither run has a `FAILED` or `ERROR` line.
+4. The same `claude` tests (`tests/test_rules_load.py`) are deselected at both commits. Under
+   xdist the parallel run's summary does not print a deselected count, so the evidence shows
+   `uv run pytest --collect-only -q` at the base and at the head (xdist turns itself off for
+   collection, so each prints `x/y tests collected (n deselected)`) with the same n, and no
+   `tests/test_rules_load.py` id among either run's `PASSED` lines.
+
+## AC10: the records
+
+`docs/assumptions.md` and ADR-0014 against the spec's *Records*, with the CI timing from AC7.
+
+Pass when all of these hold:
+
+1. `docs/assumptions.md` row A8 reads as the spec's restated A8: the `test` job, run in
+   parallel, takes at most half as long, as the median of three runs on one commit, as the
+   same suite run serially (`-n 0`), on a GitHub-hosted `ubuntu-latest` runner with 4 CPUs
+   while the repository is public. It stops holding when the median of three `test` jobs on
+   one commit takes more than half the serial time, or when `psutil` enters `uv.lock`. It
+   says `loadgroup` is not the fix, having measured slower in the sandbox (7m05s against
+   4m54s), and names no `loadgroup` remedy. It says that for story #35 the serial time is its
+   base's `test` job on `main`, the last one run before `-n auto`. The standing wording does
+   not tie the serial time to a `main` run, since `main` runs in parallel once this merges.
+2. Rows A25 (two xdist workers never get the same free port) and A26 (every test is
+   independent of the others) appear with the spec's assumption, area `ci` and
+   "stopped holding" text. A wording change is fine only where the build proved the spec
+   wrong, and the evidence says what changed.
+3. A section "Measured (2026-11-02, CI)" records the head runs' `test` job times with
+   `-n auto` and the base's serial `test` job time, both taken from AC7.
+4. ADR-0014 ends with "Addendum 2026-11-02" as in the spec, with the head timing, the serial
+   base timing and the PR number (#41) filled in (no `<filled from AC7>` or `<n>`
+   placeholder left), and its original text is otherwise unchanged.
+5. ADR-0014's row in `docs/adr/README.md` is unchanged, no new ADR was added, and no other
+   row of `docs/assumptions.md` changed.
+
+## EC5: a failing test under xdist
+
+A test that fails under xdist is reported as a serial run reports it ([5]).
+
+Pass when all of these hold:
+
+1. During the build, one deliberately failing throwaway test was run with `-n auto` (the
+   output shows a `created: N/N workers` line).
+2. The output's failures section names the test by its node id and shows its traceback,
+   down to the failing assertion, and the short summary has a `FAILED <node id>` line.
+3. The throwaway test is not in any commit of the branch.
+
 # Judged checks for story #39 (the longer explainer)
 
 The film itself is judged at the evidence gate (AC14, Done-when 2): what it teaches, how it

@@ -20,6 +20,8 @@ The words someone needs defined to talk about using or developing the platform. 
 
 **positing time** — When the platform learned a value: the extraction time of the *load* that brought it. "Extracted-at" is the column, not another word for the concept.
 
+**as known at** — Reading history as the platform knew it at a *positing time*: only what the *loads* extracted by then had stated, their *corrections* and *retractions* included. Distinct from reading it at a *changed-at*, which picks when a value was true in the business; one question can fix both. See [ADR-0033](adr/0033-expose-the-time-traveling-perspective-as-a-duckdb-table-macro-taking-a-changing-and-a-positing-time.md).
+
 **restatement** — The same value stated again at a later *changed-at*. Distinct from a *correction*, which states another value at a *changed-at* already held.
 
 **correction** — Another value for a *changed-at* already held; it retracts the held value and asserts the new one. Distinct from a *restatement*. See [ADR-0006](adr/0006-apply-anchor-crt-loading-rules-in-generated-sql.md).

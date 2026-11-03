@@ -50,7 +50,9 @@ uv run pytest
 ```
 
 The suite builds synthetic lakes through every layer in throwaway copies of the repo; the
-end-to-end tests take minutes. `tests/judged.md` lists the checks a reviewer judges.
+end-to-end tests take minutes. It runs across one pytest-xdist worker per CPU, so each test
+must stand alone (A26); `uv run pytest -n 0` runs it serially, for debugging.
+`tests/judged.md` lists the checks a reviewer judges.
 
 After changing anything in `.claude/rules/` or moving a layer's folders, also run
 `uv run task test-rules`: it opens a file of each layer in a real Claude Code session and

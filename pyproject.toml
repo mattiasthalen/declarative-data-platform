@@ -19,7 +19,7 @@ film = "film:main"
 ingest = ["dlt[parquet]>=1.32,<1.33"]
 dbt = ["dbt-core>=1.12,<1.13", "dbt-duckdb>=1.11,<1.12"]
 orchestrate = ["prefect>=3.9,<3.10"]
-dev = ["pytest>=8", "duckdb", "go-task-bin>=3.54", "fonttools>=4.50", "brotli>=1.1"]
+dev = ["pytest>=8", "pytest-xdist>=3.6", "duckdb", "go-task-bin>=3.54", "fonttools>=4.50", "brotli>=1.1"]
 film = [
     "kokoro-onnx==0.6.1",
     "numpy>=2",
@@ -39,7 +39,7 @@ packages = ["src/ingest", "src/conform", "src/integrate", "src/serve", "src/owne
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
-addopts = "-p no:cacheprovider"
+addopts = "-n auto -p no:cacheprovider"
 markers = [
     "claude: runs real Claude Code sessions; only with `-m claude` (`task test-rules`), never in CI",
 ]
