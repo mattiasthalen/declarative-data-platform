@@ -19,10 +19,11 @@ import wave
 from film import score, timeline
 
 DURATION = 40.0
-CUES = [(12.0, 20.0)]
-# Inside the cue, and on both sides of it, a second clear of each edge.
-INSIDE = (13.0, 19.0)
-OUTSIDE = ((5.0, 11.0), (21.0, 27.0))
+CUES = [(15.0, 21.0)]
+# Inside the cue, and on both sides of it, clear of the ducking's ramps. All three lie in the ingest
+# chapter (10 to 30 s), so a chapter whose score is quieter (the pad-only hook) cannot widen the gap.
+INSIDE = (16.0, 20.0)
+OUTSIDE = ((11.0, 13.5), (23.0, 28.0))
 # [4]: 96 BPM in 4/4.
 BPM = 96
 TOLERANCE = 1e-9
@@ -50,19 +51,17 @@ def rms(audio, start: float, end: float) -> float:
 
 def test_film_score():
     """AC9 (#39), AC4 (#49): two renders of the score are the same bytes; the RMS inside a cue is
-    at least 6 dB and at most 10 dB below the RMS outside it."""
+    at least 6 dB and at most 10 dB below the RMS on each side of it, in the same chapter."""
     first = score.render(DURATION, CUES)
     second = score.render(DURATION, CUES)
     assert isinstance(first, bytes) and first, "score.render returned no bytes"
     assert first == second, "two renders of the score differ"
 
     audio = samples(first)
-    inside = rms(audio, *INSIDE)
-    outside = min(rms(audio, *span) for span in OUTSIDE)
-    assert outside > 0, "the score is silent outside the cue"
-    ducked = 20 * math.log10(outside / inside) if inside > 0 else math.inf
-    assert ducked >= 6, f"the score is ducked {ducked:.1f} dB under the cue, expected at least 6"
-    assert ducked <= 10, f"the score is ducked {ducked:.1f} dB under the cue, expected at most 10"
+    for span in OUTSIDE:
+        ducked = level(audio, span, INSIDE)
+        assert ducked >= 6, f"the score is ducked {ducked:.1f} dB under the cue against {span} s, expected at least 6"
+        assert ducked <= 10, f"the score is ducked {ducked:.1f} dB under the cue against {span} s, expected at most 10"
 
 
 def level(audio, louder: tuple[float, float], quieter: tuple[float, float]) -> float:
