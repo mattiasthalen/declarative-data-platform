@@ -23,6 +23,7 @@ BEAT = 60 / BPM
 BAR = 4 * BEAT  # 2.5 s: every chapter starts on a bar
 BED = 10 ** (-16 / 20)  # the whole score sits under the voice: its peak, set after mastering
 DUCK = 10 ** (-9 / 20)  # and further down while a line is spoken
+DRIVE = 10 ** (-3 / 20)  # into the saturation: harder squeezes the score's crest and its duck
 DUCK_LEAD, DUCK_RELEASE = 0.3, 1.0
 BRIDGE = 1.5  # lines closer than this stay under one duck, so the score doesn't swell between them
 
@@ -83,7 +84,7 @@ def render(duration: float, cues: list[tuple[float, float]]) -> bytes:
             _add(dry, k, _pan(snare, 0), 0.4)
 
     mix = dry + _reverb(send, rng)
-    mix *= _ducking(t, cues)[:, None]
+    mix *= DRIVE * _ducking(t, cues)[:, None]
     return _master(mix, duration, rng)
 
 
