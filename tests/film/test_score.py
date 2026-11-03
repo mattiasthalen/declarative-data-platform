@@ -7,6 +7,7 @@ score's own fade in and out.
 
 - ``-k film_score``: AC9 (#39), AC4 (#49): ducked at least 6 dB and at most 10 dB, and still ducked
   between cues less than 1.5 s apart.
+- ``-k film_score_bed``: AC12 (#49): the score sits under the voice, peaking at most -15 dBFS.
 - ``-k film_score_bars``: AC3 (#49). ``film.score.BAR`` is the length of one bar in seconds.
 """
 
@@ -81,6 +82,27 @@ def test_film_score_bridges_short_gaps():
     long = samples(score.render(DURATION, [(12.0, 15.0), (19.0, 22.0)]))
     rise = level(long, (16.5, 17.5), (13.0, 14.5))
     assert rise >= 4, f"in a 4 s gap between cues the score is {rise:+.1f} dB from its ducked level, expected at least 4 dB above"
+
+
+# AC12 (#49): the score's loudest sample, and the least its RMS beside a cue may be, in dBFS.
+BED_PEAK = -15.0
+BED_FLOOR = -45.0
+
+
+def test_film_score_bed():
+    """AC12 (#49): the score peaks at or below -15 dBFS, so it sits under the voice, and its RMS
+    beside the cue stays above -45 dBFS, so it is still heard."""
+    import numpy as np
+
+    audio = samples(score.render(DURATION, CUES))
+    peak = float(np.max(np.abs(audio))) / 32768
+    assert peak > 0, "the score is silent"
+    peak_db = 20 * math.log10(peak)
+    assert peak_db <= BED_PEAK, f"the score peaks at {peak_db:.1f} dBFS, expected at most {BED_PEAK}"
+
+    beside = rms(audio, *OUTSIDE[1]) / 32768
+    beside_db = 20 * math.log10(beside) if beside > 0 else -math.inf
+    assert beside_db > BED_FLOOR, f"the score's RMS over {OUTSIDE[1]} s is {beside_db:.1f} dBFS, expected above {BED_FLOOR}"
 
 
 def test_film_score_bars():
