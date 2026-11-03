@@ -46,8 +46,12 @@ ANCHOR = [(CENTRES[i][0] - 11, CENTRES[i][1] - 11) for i in range(9)]
 STAR = [(568.6, 78.6), (604, 114), (639.4, 78.6), (554, 114), (604, 64), (654, 114), (568.6, 149.4), (604, 164), (639.4, 149.4)]
 BRIDGE = 1
 
-# Where each spoke meets its ring tile, as #37 drew them (the diagonals meet a rounded corner).
-SPOKE_ENDS = [(654, 125), (576, 125), (615, 164), (615, 86), (640.57, 150.57), (589.43, 150.57), (589.43, 99.43), (640.57, 99.43)]
+# From the bridge diamond's edge to each ring tile, where #37 drew them (the diagonals meet a rounded corner).
+SPOKES = [
+    ((628, 125), (654, 125)), ((602, 125), (576, 125)), ((615, 138), (615, 164)), ((615, 112), (615, 86)),
+    ((621.5, 131.5), (640.57, 150.57)), ((608.5, 131.5), (589.43, 150.57)),
+    ((608.5, 118.5), (589.43, 99.43)), ((621.5, 118.5), (640.57, 99.43)),
+]
 
 # The bridge is the explainer film's: a lit diamond, a little larger than the tie it grows from.
 TIE_RADIUS, BRIDGE_RADIUS = 12, 13
@@ -98,18 +102,8 @@ def square_edge(dx: float, dy: float) -> float:
     return 11 * math.hypot(dx, dy) / max(abs(dx), abs(dy))
 
 
-def diamond_edge(radius: float, dx: float, dy: float) -> float:
-    """How far a diamond's edge is from its centre, in direction (dx, dy)."""
-    return radius * math.hypot(dx, dy) / (abs(dx) + abs(dy))
-
-
 def diamond(cx: float, cy: float, radius: float) -> str:
     return f"{num(cx)},{num(cy - radius)} {num(cx + radius)},{num(cy)} {num(cx)},{num(cy + radius)} {num(cx - radius)},{num(cy)}"
-
-
-def spokes() -> str:
-    """From the bridge's edge to each ring tile."""
-    return "".join(segment(TIE, end, diamond_edge(BRIDGE_RADIUS, end[0] - TIE[0], end[1] - TIE[1]), 0) for end in SPOKE_ENDS)
 
 
 def anchor_lines() -> str:
@@ -240,6 +234,7 @@ def font(path: str) -> str:
 
 def hero() -> str:
     ring = "".join(tile(i) for i in range(9) if i != BRIDGE)
+    spokes = "".join(f'<line x1="{num(a[0])}" y1="{num(a[1])}" x2="{num(b[0])}" y2="{num(b[1])}"/>' for a, b in SPOKES)
     raw = "".join(f'<rect x="{x}" y="{y}" width="22" height="22" rx="4"/>' for x, y in RAW)
     dots = "\n    ".join(
         f'<circle class="{name}{dot}" cx="{x}" cy="125" r="2" fill-opacity="{rest}"/>'
@@ -285,7 +280,7 @@ def hero() -> str:
     {anchor_lines()}
   </g>
   <g class="spokes" stroke="{INK}" stroke-opacity="0.35" stroke-width="1.2">
-    {spokes()}
+    {spokes}
   </g>
   <g {FRAME}>
     {ring}
