@@ -69,10 +69,19 @@ def test_refuses_another_generators_folder(ws):
 def test_removed_contract_removes_its_files(ws):
     """EC9: removing a contract makes the next generate delete its generated files."""
     folder = products_package(ws)
+
+    def contents() -> dict[str, str]:
+        return {p.name: p.read_text() for p in folder.glob("*") if p.is_file() and p.name != "README.md"}
+
+    def of_contract(name: str) -> bool:
+        return name.split(".", 1)[0] == CONTRACT
+
+    before = contents()
+    assert any(of_contract(name) for name in before), before
+    others = {name: text for name, text in before.items() if not of_contract(name)}
     (ws.root / CONTRACT_PATH).unlink()
     require(generate(ws, "conform"))
-    left = [p.name for p in folder.glob("*") if p.name != "README.md"] if folder.exists() else []
-    assert left == []
+    assert (contents() if folder.exists() else {}) == others
     named = [
         p.relative_to(ws.root).as_posix() for p in (ws.root / "models").rglob(f"*{CONTRACT}*") if p.is_file()
     ]
