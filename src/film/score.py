@@ -21,7 +21,7 @@ SEED = 1234
 BPM = 96
 BEAT = 60 / BPM
 BAR = 4 * BEAT  # 2.5 s: every chapter starts on a bar
-BED = 10 ** (-3 / 20)  # the whole score sits a little under the voice
+BED = 10 ** (-16 / 20)  # the whole score sits under the voice: its peak, set after mastering
 DUCK = 10 ** (-9 / 20)  # and further down while a line is spoken
 DUCK_LEAD, DUCK_RELEASE = 0.3, 1.0
 BRIDGE = 1.5  # lines closer than this stay under one duck, so the score doesn't swell between them
@@ -83,7 +83,7 @@ def render(duration: float, cues: list[tuple[float, float]]) -> bytes:
             _add(dry, k, _pan(snare, 0), 0.4)
 
     mix = dry + _reverb(send, rng)
-    mix *= (BED * _ducking(t, cues))[:, None]
+    mix *= _ducking(t, cues)[:, None]
     return _master(mix, duration, rng)
 
 
@@ -251,7 +251,7 @@ def _master(mix: np.ndarray, duration: float, rng) -> bytes:
     mix = np.stack([_highpass(_lowpass(mix[:, c], 11000), 20) for c in range(2)], axis=1)
     mix = np.tanh(mix * fade[:, None] * 1.1) / 1.1
     peak = float(np.max(np.abs(mix))) or 1.0
-    mix *= 10 ** (-1 / 20) / peak
+    mix *= BED / peak
     dither = (rng.random(mix.shape) - rng.random(mix.shape)) / 32768
     return wav(mix + dither, SR)
 
