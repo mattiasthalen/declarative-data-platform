@@ -57,15 +57,16 @@ def fetch(models: Path) -> None:
     verify(models)
 
 
-def synthesizer(models: Path, voice: str, speed: float) -> Callable[[str], np.ndarray]:
-    """Kokoro speaking in ``voice``; each call returns one line as samples at KOKORO_RATE."""
+def synthesizer(models: Path, voice: str, speed: float, lang: str) -> Callable[[str], np.ndarray]:
+    """Kokoro speaking in ``voice`` with ``lang``'s phonemes; each call returns one line as samples at
+    KOKORO_RATE."""
     verify(models)
     from kokoro_onnx import Kokoro
 
     kokoro = Kokoro(str(Path(models) / "kokoro-v1.0.onnx"), str(Path(models) / "voices-v1.0.bin"))
 
     def synthesize(text: str) -> np.ndarray:
-        samples, rate = kokoro.create(text, voice=voice, speed=speed, lang="en-us")
+        samples, rate = kokoro.create(text, voice=voice, speed=speed, lang=lang)
         if rate != KOKORO_RATE:
             raise ModelError(f"Kokoro returned {rate} Hz, expected {KOKORO_RATE}")
         return np.asarray(samples, dtype=np.float32)

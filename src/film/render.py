@@ -171,7 +171,7 @@ def cut(out: Path = OUT, workers: int | None = None) -> Path:
     print("narration: synthesizing", flush=True)
     placed = voice.place(
         narration["lines"],
-        voice.synthesizer(MODELS, narration["voice"], narration["speed"]),
+        voice.synthesizer(MODELS, narration["voice"], narration["speed"], narration["lang"]),
         end=timeline.captions()[-1]["end"],
     )
     for line in placed:

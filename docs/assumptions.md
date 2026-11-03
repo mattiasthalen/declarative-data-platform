@@ -39,6 +39,7 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A31 | A GitHub-hosted `ubuntu-latest` runner renders the two-minute explainer at 1920x1080, 60 fps, with Chromium and ffmpeg, inside the workflow's timeout. | film | The `film` workflow times out. |
 | A32 | A subcategory's `ProductSubcategoryId` names it for its whole life and is never reused for another; it is the subcategory's key (ADR-0037). | integrate | The feed serves one id under two names that are clearly different subcategories, or an id a product held disappears and returns meaning something else. |
 | A33 | In a run, a referenced resource lands before the resource naming it: ingest runs a source's resources in file-name order, and `product_subcategories.yaml` sorts before `products.yaml` (ADR-0037). | ingest | A tie posit lands one build after the product row that names it, or a product's new subcategory never shows in the tie after a subcategories load was retried. |
+| A36 | Kokoro synthesizes each narration line on a GitHub-hosted runner within 0.2 s of its length on the machine that set its cue, so cues that fit locally fit in CI; every line clears its next cue by at least 0.2 s. | film | The `film` workflow fails with an Overrun naming a line. |
 
 ## Measured (2026-10-30, the AdventureWorks OData feed)
 
