@@ -68,6 +68,15 @@ function link([ax, ay, edgeA], [bx, by, edgeB], attrs) {
   const a = edgeA(ux, uy), b = edgeB(ux, uy);
   return `<line x1="${ax + ux * a}" y1="${ay + uy * a}" x2="${bx - ux * b}" y2="${by - uy * b}" ${attrs}/>`;
 }
+// The order a model is built in: an anchor model's anchors, then what describes them (attributes, then
+// their lines), then what relates them (the tie, then its lines); a star's entities, then the bridge,
+// then the spokes joining them. Other shapes appear in one group.
+function groupOf(kind, i) {
+  const S = F.stages;
+  if (kind === 'anchor') return S.anchors.includes(i) ? 0 : S.attributes.includes(i) ? 1 : 3;
+  if (kind === 'star') return i === S.bridge ? 1 : 0;
+  return 0;
+}
 function shape(kind, colour) {
   const g = document.createElementNS(NS, 'g');
   const S = F.stages;
@@ -86,13 +95,13 @@ function shape(kind, colour) {
       const anchorOf = (i) => (layout[i][0] < layout[S.tie[0]][0] ? S.anchors[0] : S.anchors[1]);
       const end = (i, edge) => { const [x, y, s] = centre(i); return [x, y, edge(s)]; };
       const square = (s) => EDGE.square(11 * s), attribute = (s) => EDGE.circle(9 * s), tie = (s) => EDGE.diamond(12 * s);
-      const ln = (i) => `class="ln" data-i="${i}" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"`;
-      for (const i of S.attributes) add(link(end(i, attribute), end(anchorOf(i), square), ln(i)));
-      for (const a of S.anchors) add(link(end(a, square), end(S.tie[0], tie), ln(S.tie[0])));
+      const ln = (group) => `class="ln" data-group="${group}" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"`;
+      for (const i of S.attributes) add(link(end(i, attribute), end(anchorOf(i), square), ln(2)));
+      for (const a of S.anchors) add(link(end(a, square), end(S.tie[0], tie), ln(4)));
     }
     if (kind === 'star') {
       const [cx, cy, s] = centre(S.bridge), bridge = [cx, cy, EDGE.diamond(13 * s)];
-      layout.forEach((_, i) => { if (i !== S.bridge) { const [x, y] = centre(i); add(link(bridge, [x, y, EDGE.square(11 * s)], `class="ln" data-i="${i}" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"`)); } });
+      layout.forEach((_, i) => { if (i !== S.bridge) { const [x, y] = centre(i); add(link(bridge, [x, y, EDGE.square(11 * s)], `class="ln" data-group="2" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"`)); } });
     }
     layout.forEach((p, i) => {
       const [x, y, s] = at(p);
@@ -103,7 +112,7 @@ function shape(kind, colour) {
       else if (kind === 'star' && i === S.bridge) body = `<polygon points="${cx},${cy - 13 * s} ${cx + 13 * s},${cy} ${cx},${cy + 13 * s} ${cx - 13 * s},${cy}" ${lit}/><circle cx="${cx}" cy="${cy}" r="${3.5 * s}" fill="${COLOUR[colour]}"/>`;
       else if (kind === 'anchor' && S.anchors.includes(i)) body = `<rect x="${x}" y="${y}" width="${w}" height="${w}" rx="${4 * s}" ${lit}/><circle cx="${cx}" cy="${cy}" r="${3.5 * s}" fill="${COLOUR[colour]}"/>`;
       else body = `<rect x="${x}" y="${y}" width="${w}" height="${w}" rx="${4 * s}" ${frame}/>`;
-      add(`<g class="tile" data-i="${i}" style="transform-origin:${cx}px ${cy}px">${body}</g>`);
+      add(`<g class="tile" data-group="${groupOf(kind, i)}" style="transform-origin:${cx}px ${cy}px">${body}</g>`);
     });
   }
   g.innerHTML = parts.join('');
@@ -121,16 +130,15 @@ function side(cls, [kind, label], colour) {
 }
 // the shape's tiles appear one by one from t0 to t1; before t0 the shape is drawn whole when `whole`
 function buildShape(box, t, t0, t1, whole) {
-  const tiles = box.querySelectorAll('.tile');
-  const order = [...tiles].map((tile) => +tile.dataset.i);
-  tiles.forEach((tile, k) => {
-    const a = whole ? 1 : outCubic(prog(t, t0 + (k / tiles.length) * (t1 - t0), t0 + (k / tiles.length) * (t1 - t0) + 0.5));
-    tile.style.opacity = a;
-    tile.style.transform = `scale(${0.6 + 0.4 * a})`;
-  });
-  box.querySelectorAll('.ln').forEach((line) => {
-    const k = order.indexOf(+line.dataset.i);
-    line.style.opacity = whole ? 1 : outCubic(prog(t, t0 + ((k + 0.5) / tiles.length) * (t1 - t0), t0 + ((k + 0.5) / tiles.length) * (t1 - t0) + 0.5));
+  const parts = [...box.querySelectorAll('.tile, .ln')];
+  const groups = [...new Set(parts.map((p) => +p.dataset.group))].sort((a, b) => a - b);
+  const span = (t1 - t0) / Math.max(1, groups.length);
+  parts.forEach((part) => {
+    const g = groups.indexOf(+part.dataset.group), mates = parts.filter((p) => p.dataset.group === part.dataset.group);
+    const start = t0 + g * span + (mates.indexOf(part) / mates.length) * span * 0.6;
+    const a = whole ? 1 : outCubic(prog(t, start, start + Math.min(0.5, span)));
+    part.style.opacity = a;
+    if (part.classList.contains('tile')) part.style.transform = `scale(${0.6 + 0.4 * a})`;
   });
   box.querySelectorAll('.dot').forEach((dot) => {
     const r = +dot.dataset.r, k = +dot.dataset.k;
@@ -223,13 +231,15 @@ function tileShape(tile, box, colour, { labels, attributes }) {
   const label = labels ? `<text class="tilename" x="${cx}" y="${top + w + NAME.gap + belowOf(tile, w, attributes)}" style="font-size:${NAME.size}px" text-anchor="middle">${esc(own)}` +
     (owner ? `<tspan class="of" x="${cx}" dy="${NAME.line}" style="font-size:${NAME.owner}px">${esc(owner)}</tspan>` : '') + '</text>' : '';
   if (attributes && tile.kind === 'anchor') {
-    // the anchor's attributes, as the hero draws them: small circles around it
+    // the anchor's attributes, as the hero draws them: small circles around it, drawn after the anchor
+    let described = '';
     for (let k = 0; k < tile.attributes; k++) {
       const a = -Math.PI / 2 + (k / tile.attributes) * Math.PI * 2, rr = w * 0.86;
       const ax = cx + Math.cos(a) * rr, ay = cy + Math.sin(a) * rr;
-      body = link([cx, cy, EDGE.square(w / 2)], [ax, ay, EDGE.circle(w * 0.12)], `stroke="${stroke}" stroke-opacity="0.55" stroke-width="2"`) +
-        `<circle cx="${ax}" cy="${ay}" r="${w * 0.12}" fill="var(--surface)" stroke="${stroke}" stroke-width="2"/>` + body;
+      described += link([cx, cy, EDGE.square(w / 2)], [ax, ay, EDGE.circle(w * 0.12)], `stroke="${stroke}" stroke-opacity="0.55" stroke-width="2"`) +
+        `<circle cx="${ax}" cy="${ay}" r="${w * 0.12}" fill="var(--surface)" stroke="${stroke}" stroke-width="2"/>`;
     }
+    body = `<g class="zattr">${described}</g>` + body;
   }
   return `<g class="ztile" style="transform-origin:${cx}px ${cy}px">${body}${label}</g>`;
 }
@@ -251,9 +261,11 @@ function growZoom(box, t, t0) {
   const tiles = box.querySelectorAll('.ztile');
   const step = Math.min(0.12, 2.4 / tiles.length);
   tiles.forEach((tile, i) => {
-    const a = outCubic(prog(t, t0 + 0.5 + i * step, t0 + 0.9 + i * step));
+    const start = t0 + 0.5 + i * step, a = outCubic(prog(t, start, start + 0.4));
     tile.style.opacity = a;
     tile.style.transform = `scale(${0.7 + 0.3 * a})`;
+    const attributes = tile.querySelector('.zattr');
+    if (attributes) attributes.style.opacity = outCubic(prog(t, start + 0.4, start + 1.0));
   });
 }
 
