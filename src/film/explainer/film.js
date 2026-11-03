@@ -159,6 +159,8 @@ function typeCard(box, t, t0) {
 // The tiles sit on F.zoom's grid, shifted down by the box's top band where its label goes.
 const BOX = F.zoom_box;
 const MONO = 0.6; // JetBrains Mono's advance, in ems: how wide a tile's name is drawn
+// A tile's name under it, and its owner on the line below: sizes and offsets, drawn and measured from these.
+const NAME = { size: 14, owner: 12, gap: 26, line: 19 };
 // What a tile draws beyond its square, as offsets from the square's centre and its bottom edge.
 const halo = (tile, w, attributes) => (attributes && tile.kind === 'anchor' && tile.attributes ? w * 0.98 : tile.kind === 'bridge' ? w * 0.56 : w * 0.5);
 const nameOf = (tile) => (tile.name.includes('__') ? tile.name.split('__') : ['', tile.name]);
@@ -167,9 +169,9 @@ function extent(tile, box, labels, attributes) {
   let [x0, y0, x1, y1] = [cx - r, cy - r, cx + r, cy + r];
   if (labels) {
     const [owner, own] = nameOf(tile), below = belowOf(tile, w, attributes);
-    const half = Math.max(own.length * 14, owner.length * 12) * MONO / 2;
+    const half = Math.max(own.length * NAME.size, owner.length * NAME.owner) * MONO / 2;
     x0 = Math.min(x0, cx - half); x1 = Math.max(x1, cx + half);
-    y1 = Math.max(y1, y + BOX.top + w + below + 26 + (owner ? 19 : 0) + 5);
+    y1 = Math.max(y1, y + BOX.top + w + below + NAME.gap + (owner ? NAME.line : 0) + 5);
   }
   return [x0, y0, x1, y1];
 }
@@ -203,8 +205,8 @@ function tileShape(tile, box, colour, { labels, attributes }) {
   else body = `<rect x="${x}" y="${top}" width="${w}" height="${w}" rx="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${claimed ? 2.4 : 2}"/>`;
   if (claimed) body += `<circle cx="${cx}" cy="${cy}" r="${Math.max(3, w * 0.07)}" fill="${stroke}"/>`;
   const [owner, own] = nameOf(tile);
-  const label = labels ? `<text class="tilename" x="${cx}" y="${top + w + 26 + belowOf(tile, w, attributes)}" text-anchor="middle">${esc(own)}` +
-    (owner ? `<tspan class="of" x="${cx}" dy="19">${esc(owner)}</tspan>` : '') + '</text>' : '';
+  const label = labels ? `<text class="tilename" x="${cx}" y="${top + w + NAME.gap + belowOf(tile, w, attributes)}" style="font-size:${NAME.size}px" text-anchor="middle">${esc(own)}` +
+    (owner ? `<tspan class="of" x="${cx}" dy="${NAME.line}" style="font-size:${NAME.owner}px">${esc(owner)}</tspan>` : '') + '</text>' : '';
   if (attributes && tile.kind === 'anchor') {
     // the anchor's attributes, as the hero draws them: small circles around it
     for (let k = 0; k < tile.attributes; k++) {
@@ -284,7 +286,7 @@ function header(kicker, title, sub) {
 }
 
 // the four layers: header, the shape before, the declaration, the shape after, then the whole model
-for (const name of ['ingest', 'conform', 'integrate', 'serve']) {
+for (const name of Object.keys(LAYERS)) {
   const L = LAYERS[name], s = scene(name), c = chapterOf[name], { start, end, beats } = span[name];
   const close = beats.close_up, far = beats.zoom_out;
   const head = header(`Layer ${L.n} of 4`, L.title, L.sub);
@@ -361,7 +363,7 @@ for (const name of ['ingest', 'conform', 'integrate', 'serve']) {
 }
 
 // the chapter steps, top right, from the first layer to orchestration
-const steps = ['ingest', 'conform', 'integrate', 'serve'].map((name) => {
+const steps = Object.keys(LAYERS).map((name) => {
   const step = el('div', 'step', `<i></i>${name}`);
   $('steps').appendChild(step);
   return [name, step];

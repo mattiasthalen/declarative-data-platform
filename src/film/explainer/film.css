@@ -56,7 +56,7 @@ body { font-family: Inter, sans-serif; color: var(--text); -webkit-font-smoothin
 .zoom svg { position: absolute; left: 0; top: 0; width: 1680px; overflow: visible; }
 .zoom .label { position: absolute; left: 0; top: -2px; font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); }
 .tilename { font-family: 'JetBrains Mono', monospace; font-size: 14px; fill: var(--label); }
-.tilename .of { fill: var(--muted); font-size: 12px; }
+.tilename .of { fill: var(--muted); }
 
 .hero-line { left: 120px; width: 1680px; font-size: 76px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.12; }
 .motif { left: 1290px; top: 300px; }
