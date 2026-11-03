@@ -1,8 +1,8 @@
 """The README links the explainer under the hero (story #39: AC12).
 
 The line under the hero is the only link to the film: text "Watch the two-minute explainer, with
-sound" (the link says the video has sound, [6]), target the asset's fixed download URL on the
-`explainer` release ([5]). It may be Markdown or an HTML paragraph; no poster image.
+sound" (the link says the video has sound, [6]), target the film's GitHub Pages site ([5],
+amended at review 2026-11-03, ADR-0040). It may be Markdown or an HTML paragraph; no poster image.
 
 - ``-k readme_explainer_link``: AC12.
 """
@@ -16,7 +16,7 @@ from harness import REPO
 
 README = REPO / "README.md"
 TEXT = "Watch the two-minute explainer, with sound"
-URL = "https://github.com/mattiasthalen/declarative-data-platform/releases/download/explainer/declarative-data-platform-explainer.mp4"
+URL = "https://mattiasthalen.github.io/declarative-data-platform/"
 MARKDOWN = re.compile(r"\[([^\]]+)\]\(\s*<?([^)\s>]+)>?\s*\)")
 HTML = re.compile(r"<a\b[^>]*\bhref\s*=\s*[\"']([^\"']+)[\"'][^>]*>(.*?)</a\s*>", re.IGNORECASE | re.DOTALL)
 TAG = re.compile(r"<[^>]+>")
@@ -24,7 +24,7 @@ TAG = re.compile(r"<[^>]+>")
 
 def test_readme_explainer_link():
     """AC12: the first non-blank line after the hero is one link, reading exactly "Watch the
-    two-minute explainer, with sound" and pointing at the asset's download URL, and nothing else;
+    two-minute explainer, with sound" and pointing at the film's GitHub Pages site, and nothing else;
     no other README line carries that text."""
     lines = README.read_text(encoding="utf-8").splitlines()
     content = [(i, line) for i, line in enumerate(lines) if line.strip()]
