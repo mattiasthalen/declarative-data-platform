@@ -25,7 +25,7 @@ BED = 10 ** (-3 / 20)  # the whole score sits a little under the voice
 DUCK = 10 ** (-18 / 20)  # and further down while a line is spoken
 DUCK_LEAD, DUCK_RELEASE = 0.15, 0.4
 
-# One chord a bar: Am, C/G, F, E.
+# One chord a bar: Am, C/G, F, E, until the lockup rests on Am.
 CHORDS = [[57, 60, 64], [55, 60, 64], [53, 57, 60], [52, 56, 59]]
 ROOTS = [33, 31, 29, 28]
 ARPEGGIOS = [[69, 72, 76, 81], [67, 72, 76, 79], [65, 69, 72, 77], [64, 68, 71, 76]]
