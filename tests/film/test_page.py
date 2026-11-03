@@ -15,8 +15,8 @@ The throwaway copies hold only the folders ``film.data.build`` reads.
 - ``-k film_lines_meet_shapes_at_their_edges``: J39-1 point 4, the shapes match the hero's, whose
   lines run edge to edge (evidence defect: lines drawn from shape centres).
 - ``-k film_shapes_build_in_modelling_order``: J39-1 point 4, an anchor model is built anchors,
-  then attributes, then the tie, and a star entities, then the bridge, then the spokes (evidence
-  defect: built in the wrong order).
+  then attributes, then the tie, and a star entities, then the spokes, then the bridge that ties
+  them together (evidence defect: built in the wrong order).
 """
 
 from __future__ import annotations
@@ -458,10 +458,10 @@ def test_film_shapes_build_in_modelling_order_anchor_model():
 
 
 def test_film_shapes_build_in_modelling_order_star():
-    """J39-1 point 4, evidence defect: a star is built entities first, then the bridge, then the
-    spokes joining them. Sampled a frame at a time through the serve close-up, its right side
-    shape, the star, shows every entity (rect) before the bridge (polygon), and the bridge before
-    any spoke (line)."""
+    """J39-1 point 4, evidence defect: a star is built entities first, then the spokes, then the
+    bridge last, tying them together. Sampled a frame at a time through the serve close-up, its
+    right side shape, the star, shows every entity (rect) before any spoke (line), and every spoke
+    before the bridge (polygon)."""
     with opened(render.page(REPO)) as (page, errors):
         close = beat("serve", "close_up")
         shapes = build(page, right_side("serve"), close["start"], close["end"])
@@ -472,10 +472,10 @@ def test_film_shapes_build_in_modelling_order_star():
         bridges = [s for s in shapes if s["tag"] == "polygon"]
         spokes = [s for s in shapes if s["tag"] == "line"]
         assert entities and bridges and spokes, f"the serve close-up's star lacks a role: {[s['tag'] for s in shapes]}"
-        order = (f"first shown (s): entities {firsts(entities)}, bridge {firsts(bridges)}, "
-                 f"spokes {firsts(spokes)}")
-        assert max(firsts(entities)) < min(firsts(bridges)), f"the bridge shows before every entity has. {order}"
-        assert max(firsts(bridges)) < min(firsts(spokes)), f"a spoke shows before the bridge. {order}"
+        order = (f"first shown (s): entities {firsts(entities)}, spokes {firsts(spokes)}, "
+                 f"bridge {firsts(bridges)}")
+        assert max(firsts(entities)) < min(firsts(spokes)), f"a spoke shows before every entity has. {order}"
+        assert max(firsts(spokes)) < min(firsts(bridges)), f"the bridge shows before every spoke has. {order}"
 
 
 def test_film_shapes_build_in_modelling_order_zoom_out():
