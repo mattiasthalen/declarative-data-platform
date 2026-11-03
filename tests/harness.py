@@ -28,6 +28,9 @@ RESOURCE = "adventure_works__products"
 CONTRACT = "adventure_works__products"
 # Contracts sit one folder per source, one file per resource (ADR-0017); the id stays CONTRACT.
 CONTRACT_PATH = "contracts/adventure_works/products.yaml"
+# Story #6's second resource: ProductSubcategories, pulled whole and staged by its own contract.
+SUBCATEGORIES = "adventure_works__product_subcategories"
+SUBCATEGORIES_CONTRACT_PATH = "contracts/adventure_works/product_subcategories.yaml"
 
 # Everything a fresh clone would not have.
 NOT_IN_A_CLONE = shutil.ignore_patterns(
@@ -119,6 +122,20 @@ def product(
     }
 
 
+def subcategory(
+    subcategory_id: int, name: str, *, category: int = 1, modified: str | None = "2008-04-30"
+) -> dict:
+    """An AdventureWorks ProductSubcategories row as the OData feed serves it (measured 2026-11-02:
+    ``ProductSubcategoryId``, ``ProductCategoryId``, ``Name``, ``Rowguid``, ``ModifiedDate``)."""
+    return {
+        "ProductSubcategoryId": subcategory_id,
+        "ProductCategoryId": category,
+        "Name": name,
+        "Rowguid": str(uuid.UUID(int=10_000 + subcategory_id)),
+        "ModifiedDate": modified,
+    }
+
+
 def load_id(n: int) -> str:
     """The n-th load's id: dlt's seconds-since-epoch string, an hour apart, at hour >= 10 UTC."""
     return f"{1717000000 + 3600 * n}.25"
@@ -186,12 +203,15 @@ class Snapshot:
     # -- conform
 
     def staged(self) -> str:
-        """The conform staged table for Products."""
+        """The conform staged table for Products: the one named for its contract once another
+        product resource (story #6's subcategories) is staged beside it."""
         tables = [
             name
             for name, kind in self.relations("conform").items()
             if kind == "BASE TABLE" and "product" in name.lower()
         ]
+        if len(tables) > 1 and CONTRACT in tables:
+            return CONTRACT
         assert len(tables) == 1, f"expected one staged Products table in conform, found {tables}"
         return tables[0]
 

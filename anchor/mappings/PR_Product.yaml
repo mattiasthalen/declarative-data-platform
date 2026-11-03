@@ -18,3 +18,8 @@ attributes:
     column: sell_end_date
   - attribute: DIS
     column: discontinued_date
+# Each tie whose only identifier role is Product's, and the column naming the other role's key
+# (ADR-0036, ADR-0037).
+ties:
+  - tie: PR_in_PS_contains
+    column: product_subcategory_id

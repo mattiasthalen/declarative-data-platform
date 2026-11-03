@@ -1,0 +1,10 @@
+# How PS_ProductSubcategory is loaded: from which conform model, and each attribute from which
+# column. ChangedAt is the source's change time; PositedAt is the load's extraction time.
+anchor: PS
+source: adventure_works__product_subcategories
+changed_at: modified_date
+attributes:
+  - attribute: SID
+    column: product_subcategory_id
+  - attribute: NAM
+    column: name

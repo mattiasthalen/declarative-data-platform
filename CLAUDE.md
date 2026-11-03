@@ -26,7 +26,7 @@ file of a layer goes in one of its folders, or its rules will not reach the next
 Files outside them, such as `src/ownership/`, `macros/generate_schema_name.sql` or
 `orchestrate/` (the Prefect flows and `prefect.yaml` of the scheduled run), serve every layer
 and follow only this file. `src/simulate/` is the change simulator, a tool that writes
-Products loads into the lake; it is not ingest, which names no resource (ADR-0016, ADR-0027).
+Products and ProductSubcategories loads into the lake; it is not ingest, which names no resource (ADR-0016, ADR-0027).
 
 ## Rules that hold everywhere
 

@@ -1,0 +1,41 @@
+apiVersion: v3.1.0
+kind: DataContract
+id: adventure_works__product_subcategories
+name: adventure_works__product_subcategories
+version: 1.0.0
+status: active
+domain: adventure_works
+description:
+  purpose: >-
+    Product subcategories as the AdventureWorks OData feed serves them, landed whole by
+    `uv run ingest` and staged in conform as adventure_works__product_subcategories.
+schema:
+  - name: adventure_works__product_subcategories
+    physicalName: adventure_works__product_subcategories
+    physicalType: table
+    logicalType: object
+    description: One row per subcategory, as of the load that brought it.
+    properties:
+      - name: product_subcategory_id
+        physicalName: ProductSubcategoryId
+        logicalType: integer
+        description: The source's own key for the subcategory; products name their subcategory by it.
+        primaryKey: true
+        required: true
+      - name: product_category_id
+        physicalName: ProductCategoryId
+        logicalType: integer
+        description: The category the subcategory belongs to.
+      - name: name
+        physicalName: Name
+        logicalType: string
+        description: The subcategory's name.
+      - name: rowguid
+        physicalName: Rowguid
+        logicalType: string
+        description: The source's row identifier.
+      - name: modified_date
+        physicalName: ModifiedDate
+        logicalType: timestamp
+        description: When the source last changed the row.
+        required: true

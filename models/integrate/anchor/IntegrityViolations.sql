@@ -29,3 +29,11 @@ union all select * from {{ ref('ic_PR_DIS_Product_Discontinued_Posit') }}
 union all select * from {{ ref('ic_PR_DIS_Product_Discontinued_Annex') }}
 union all select * from {{ ref('ic_PR_DIS_Product_Discontinued') }}
 union all select * from {{ ref('ic_key_PR_Product_NUM') }}
+union all select * from {{ ref('ic_PS_ProductSubcategory') }}
+union all select * from {{ ref('ic_PS_SID_ProductSubcategory_SourceId_Posit') }}
+union all select * from {{ ref('ic_PS_SID_ProductSubcategory_SourceId_Annex') }}
+union all select * from {{ ref('ic_PS_SID_ProductSubcategory_SourceId') }}
+union all select * from {{ ref('ic_PS_NAM_ProductSubcategory_Name_Posit') }}
+union all select * from {{ ref('ic_PS_NAM_ProductSubcategory_Name_Annex') }}
+union all select * from {{ ref('ic_PS_NAM_ProductSubcategory_Name') }}
+union all select * from {{ ref('ic_key_PS_ProductSubcategory_SID') }}

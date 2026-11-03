@@ -1,0 +1,4 @@
+# Pulled whole every run: 37 rows (A1 holds a fortiori). Products name their subcategory by
+# ProductSubcategoryId, the subcategory's key in integrate (ADR-0037).
+endpoint:
+  path: ProductSubcategories

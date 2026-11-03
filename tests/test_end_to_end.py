@@ -361,10 +361,11 @@ def test_schema_tracking(story):
     assert s6.count("integrate", "_Schema") == 2
     for label in ("s1", "s6"):
         snap = story.snap(label)
-        anchors = _latest_rows(snap, "_Anchor")
-        assert len(anchors) == 1 and "PR" in anchors[0].values(), anchors
+        # Story #6 declares a second anchor, PS_ProductSubcategory; PR's rows are held here.
+        anchors = [r for r in _latest_rows(snap, "_Anchor") if r.get("mnemonic") == "PR"]
+        assert len(anchors) == 1, _latest_rows(snap, "_Anchor")
         assert _description(anchors[0])
-        attributes = _latest_rows(snap, "_Attribute")
+        attributes = [r for r in _latest_rows(snap, "_Attribute") if r.get("anchorMnemonic") == "PR"]
         assert len(attributes) == 7, attributes
         for m in ATTRIBUTES:
             assert any(m in r.values() or f"PR_{m}" in r.values() for r in attributes), m

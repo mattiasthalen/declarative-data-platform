@@ -1,4 +1,7 @@
-"""Simulate source change: append seeded, changed copies of the latest Products load (ADR-0027).
+"""Simulate source change: append seeded, changed copies of the latest Products and ProductSubcategories loads (ADR-0027).
+
+Beside each Products load it lands a ProductSubcategories load, the latest one with a subcategory
+renamed, so the subcategory a product is in, and the subcategory's name, change too (story #6).
 
 ``uv run simulate [--seed N] [--loads K]`` appends K loads to ``$LAKE_ROOT`` in dlt's landed
 shape, ``adventure_works__products/date=YYYY-MM-DD/hour=HH/<load_id>.<file_id>.parquet`` with the
@@ -25,6 +28,9 @@ from pathlib import Path
 
 RESOURCE = "adventure_works__products"
 SNAPSHOT = Path(__file__).with_name(f"{RESOURCE}.jsonl")
+SUBCATEGORIES = "adventure_works__product_subcategories"
+SUBCATEGORY_SNAPSHOT = Path(__file__).with_name(f"{SUBCATEGORIES}.jsonl")
+SUBCATEGORY = "ProductSubcategoryId"
 KEY = "ProductNumber"
 CHANGED_AT = "ModifiedDate"
 # The attributes the business question reads: the only ones a change touches.
@@ -42,6 +48,9 @@ MIX = (
     ("new product", 5),
     ("drop out", 10),
 )
+# Beside the mix, each load moves one product to another subcategory and takes one product's away,
+# from a random stream of their own, so a seed's other changes stay as they were before story #6.
+SUBCATEGORY_KINDS = ("move subcategory", "lose subcategory")
 
 
 class BadLoad(Exception):
@@ -55,8 +64,8 @@ def lake_root() -> Path:
     return Path(os.environ.get("LAKE_ROOT", "lake")).resolve()
 
 
-def landed_files(lake: Path) -> list[Path]:
-    folder = lake / RESOURCE
+def landed_files(lake: Path, resource: str = RESOURCE) -> list[Path]:
+    folder = lake / resource
     return sorted(folder.rglob("*.parquet")) if folder.is_dir() else []
 
 
@@ -71,13 +80,13 @@ def read_load(path: Path) -> tuple[Decimal, list[str]]:
     return load_id, table.column("data").to_pylist()
 
 
-def write_load(lake: Path, load_id: str, rows: list[dict], ids: list[str]) -> Path:
-    """Write one load of ``rows`` in the landed shape; return the file."""
+def write_load(lake: Path, load_id: str, rows: list[dict], ids: list[str], resource: str = RESOURCE) -> Path:
+    """Write one load of ``rows`` of ``resource`` in the landed shape; return the file."""
     import pyarrow as pa
     import pyarrow.parquet as pq
 
     landed = datetime.fromtimestamp(float(load_id), UTC)
-    folder = lake / RESOURCE / f"date={landed:%Y-%m-%d}" / f"hour={landed:%H}"
+    folder = lake / resource / f"date={landed:%Y-%m-%d}" / f"hour={landed:%H}"
     folder.mkdir(parents=True, exist_ok=True)
     data = [json.dumps(row) for row in rows]
     file_id = hashlib.sha256("".join(ids).encode()).hexdigest()[:10]
@@ -118,9 +127,10 @@ def parse_rows(path: str, data: list[str]) -> list[dict]:
 class Simulation:
     """The seeded state of one run: what has been seen, and what is held back for a load."""
 
-    def __init__(self, seed: int, rows: list[dict], seen: list[dict]):
+    def __init__(self, seed: int, rows: list[dict], seen: list[dict], subcategories: list[dict] = ()):
         self.seed = seed
         self.rows = rows
+        self.subcategories = [dict(row) for row in subcategories]
         self.held_back: dict[str, dict] = {}
         self.numbers = {row.get(KEY) for row in seen}
         self.ids = {row.get("ProductId") for row in seen if isinstance(row.get("ProductId"), int)}
@@ -161,6 +171,8 @@ class Simulation:
                 self.edit_fallback(rng, rows[number], day)
             elif not self.change(rng, rows[number], kind, day):
                 self.edit_fallback(rng, rows[number], day)
+        if self.subcategories:
+            self.change_subcategories(index, rows, set(picked), day)
         out = [rows[number] for number in sorted(rows, key=lambda n: self.order(n, rows))]
         out.extend(new_rows)
         self.rows = out
@@ -200,6 +212,19 @@ class Simulation:
 
     def change(self, rng: random.Random, row: dict, kind: str, day: date) -> bool:
         """Apply ``kind`` to ``row``; False if it cannot apply to this row."""
+        if kind == "move subcategory":
+            choices = sorted({r[SUBCATEGORY] for r in self.subcategories} - {row.get(SUBCATEGORY)})
+            if not choices:
+                return False
+            row[SUBCATEGORY] = rng.choice(choices)
+            row[CHANGED_AT] = day.isoformat()
+            return True
+        if kind == "lose subcategory":
+            if row.get(SUBCATEGORY) is None:
+                return False
+            row[SUBCATEGORY] = None
+            row[CHANGED_AT] = day.isoformat()
+            return True
         if kind == "source null":
             held = [a for a in ATTRIBUTES if row.get(a) is not None]
             if not held:
@@ -222,6 +247,29 @@ class Simulation:
         if kind == "edit":
             row[CHANGED_AT] = day.isoformat()
         return True  # a correction keeps ModifiedDate
+
+    def change_subcategories(self, index: int, rows: dict, changed: set, day: date) -> None:
+        """Apply each of SUBCATEGORY_KINDS to one product this load has not changed otherwise."""
+        rng = random.Random(f"{self.seed}:{index}:subcategory kinds")
+        untouched = [n for n in sorted(rows) if n not in changed and n not in self.held_back]
+        for kind in SUBCATEGORY_KINDS:
+            for number in rng.sample(untouched, len(untouched)):
+                if self.change(rng, rows[number], kind, day):
+                    untouched.remove(number)
+                    break
+
+    def next_subcategories(self, index: int, day: date) -> list[dict]:
+        """The next subcategories load: the latest, with one subcategory a product is in renamed at ``day``."""
+        rng = random.Random(f"{self.seed}:{index}:subcategories")
+        rows = [dict(row) for row in self.subcategories]
+        held = {row.get(SUBCATEGORY) for row in self.rows}
+        candidates = [row for row in rows if row.get(SUBCATEGORY) in held]
+        if candidates:
+            renamed = rng.choice(candidates)
+            renamed["Name"] = f"{renamed['Name']} {rng.choice(('II', 'Pro', 'Lite', 'Plus', 'Sport'))}"
+            renamed[CHANGED_AT] = day.isoformat()
+        self.subcategories = rows
+        return rows
 
     def edit_fallback(self, rng: random.Random, row: dict, day: date) -> None:
         row["Name"] = self.other_value(rng, row, "Name")
@@ -269,7 +317,7 @@ def format_id(value: Decimal) -> str:
 def parse(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="simulate",
-        description="Append seeded, changed copies of the latest Products load to $LAKE_ROOT.",
+        description="Append seeded, changed copies of the latest Products and ProductSubcategories loads to $LAKE_ROOT.",
     )
     parser.add_argument("--seed", type=int, help="seed for the changes (default: random, printed)")
     parser.add_argument("--loads", type=int, default=1, help="how many changed loads to append (default 1)")
@@ -281,8 +329,19 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
+def latest_subcategories(lake: Path) -> list[dict]:
+    """The rows of the latest ProductSubcategories load in ``lake``; none if it holds none."""
+    by_load: dict[Decimal, list[str]] = {}
+    for path in landed_files(lake, SUBCATEGORIES):
+        load_id, data = read_load(path)
+        by_load.setdefault(load_id, []).extend(data)
+    if not by_load:
+        return []
+    return [row for row in safe_rows(by_load[max(by_load)]) if isinstance(row.get(SUBCATEGORY), int)]
+
+
 def run(seed: int, loads: int, lake: Path) -> list[Path]:
-    """Append ``loads`` changed loads to ``lake``, landing the snapshot first on an empty lake."""
+    """Append ``loads`` changed loads to ``lake``, landing the snapshots first on an empty lake."""
     files = landed_files(lake)
     paths: list[Path] = []
     if files:
@@ -296,13 +355,17 @@ def run(seed: int, loads: int, lake: Path) -> list[Path]:
         latest_id = max(by_load)
         rows = parse_rows(", ".join(by_load[latest_id][0]), by_load[latest_id][1])
         seen = [row for _, data in by_load.values() for row in safe_rows(data)]
-        simulation = Simulation(seed, rows, seen)
+        simulation = Simulation(seed, rows, seen, latest_subcategories(lake))
         start, stamp, stamp_now = format_id(latest_id), latest_id, True
     else:
         rows = [json.loads(line) for line in SNAPSHOT.read_text().splitlines() if line.strip()]
-        simulation = Simulation(seed, rows, rows)
+        subcategories = [json.loads(line) for line in SUBCATEGORY_SNAPSHOT.read_text().splitlines() if line.strip()]
+        simulation = Simulation(seed, rows, rows, subcategories)
         start, stamp, stamp_now = format_id(FIRST_LOAD), FIRST_LOAD, False
         paths.append(write_load(lake, start, rows, dlt_ids(start, seed, 0, len(rows))))
+        paths.append(
+            write_load(lake, start, subcategories, dlt_ids(f"{start}:s", seed, 0, len(subcategories)), SUBCATEGORIES)
+        )
     for index in range(1, loads + 1):
         if stamp_now:
             # Now, as a real ingest stamps a load; one second after the latest if the clock is behind (A3).
@@ -313,6 +376,10 @@ def run(seed: int, loads: int, lake: Path) -> list[Path]:
         day = datetime.fromtimestamp(float(stamp), UTC).date()
         load_rows = simulation.next_load(index, day, final=index == loads)
         paths.append(write_load(lake, format_id(stamp), load_rows, dlt_ids(start, seed, index, len(load_rows))))
+        if simulation.subcategories:
+            renamed = simulation.next_subcategories(index, day)
+            ids = dlt_ids(f"{start}:s", seed, index, len(renamed))
+            paths.append(write_load(lake, format_id(stamp), renamed, ids, SUBCATEGORIES))
     return paths
 
 

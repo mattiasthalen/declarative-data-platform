@@ -3,7 +3,8 @@
 
 
 {#- The identities whose rows a batch not yet closed has written: this build's, and those a
-    failed build left RUNNING. Only their versions are rebuilt. -#}
+    failed build left RUNNING, in its attributes or its ties, and those tied to an identity affected
+    in the entity a tie reaches. Only their versions are rebuilt. -#}
 {% macro uss_affected(e) -%}
     {%- set running = 'select "BATCH_ID" from ' ~ load_batch_log() ~ ' where "STATUS" = \'RUNNING\'' -%}
     select "{{ e.anchor_mnemonic }}_ID" as id
@@ -14,6 +15,16 @@
     select "{{ t.prefix }}_{{ e.anchor_mnemonic }}_ID"
     from {{ ref(t.name) }}
     where "Metadata_{{ t.prefix }}" in ({{ running }})
+    {%- endfor %}
+    {%- for t in e.ties %}
+    union
+    select "{{ t.identity_column }}"
+    from {{ ref(t.name) }}
+    where "Metadata_{{ t.name }}" in ({{ running }})
+    union
+    select "{{ t.identity_column }}"
+    from {{ ref(t.name) }}
+    where "{{ t.value_column }}" in ({{ uss_affected(t.reaches) }})
     {%- endfor %}
 {%- endmacro %}
 
@@ -75,4 +86,44 @@ versions as (
         cast(id as varchar) || '|' || cast(valid_from as varchar) as _key
     from boundaries
 )
+{%- endmacro %}
+
+
+{#- One followed tie `t` of a staged bridge (ADR-0038): per identity, each version of the tie as
+    positor 0 states it now, its first held since 0001-01-01 (ADR-0039), intersected with the rows of
+    the reached entity's staged bridge. Returns (id, valid_from, _key__<reached>, and the keys that
+    stage inherits), one row per interval, for an ASOF join on valid_from. Needs the `identities` CTE
+    of `uss_versions`. -#}
+{% macro uss_reach(t, reached, keys) -%}
+    with versions_of_tie as (
+        select
+            "{{ t.identity_column }}" as id,
+            case
+                when row_number() over (partition by "{{ t.identity_column }}" order by "{{ t.name }}_ChangedAt") = 1
+                then cast('0001-01-01' as timestamp)
+                else cast("{{ t.name }}_ChangedAt" as timestamp)
+            end as valid_from,
+            "{{ t.value_column }}" as other
+        from ({{ anchor_latest({'mnemonic': t.name, 'name': t.name}) }})
+        where "{{ t.identity_column }}" in (select id from identities)
+    ),
+    spans_of_tie as (
+        select
+            id,
+            valid_from,
+            lead(valid_from, 1, cast('9999-12-31' as timestamp)) over (partition by id order by valid_from) as valid_to,
+            other
+        from versions_of_tie
+    )
+    select
+        t.id,
+        greatest(t.valid_from, s._valid_from) as valid_from
+        {%- for key in keys %},
+        s._key__{{ key }}
+        {%- endfor %}
+    from spans_of_tie t
+    join {{ ref('bridge__' ~ reached) }} s
+      on split_part(s._key__{{ reached }}, '|', 1) = cast(t.other as varchar)
+     and s._valid_from < t.valid_to
+     and t.valid_from < s._valid_to
 {%- endmacro %}

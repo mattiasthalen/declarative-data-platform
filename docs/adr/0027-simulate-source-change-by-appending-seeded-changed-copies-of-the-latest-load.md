@@ -19,3 +19,7 @@ CI and every history story replay the same history from a seed. The snapshot is 
 ## Addendum 2026-11-01
 
 "A product drops out for one load only" holds within a run that completes. A run stopped between the load that drops a product and the next one leaves the product out of the latest load, and a later run starts from that load without it; one more run does not bring it back. Accepted as is (Mattias, 2026-11-01): restoring products missing from the latest load on the next run would also restore products a real source deleted. Also from #4: a sell start set on a row whose sell start is null now lands before the row's earliest end date, so the simulated dates stay in order over long runs.
+
+## Addendum 2026-11-03
+
+From story #6 the simulator also lands a ProductSubcategories load beside every Products load, the latest one with one referenced subcategory renamed, and two more change kinds move a product to another subcategory or clear its `ProductSubcategoryId`. "Only the six attributes the business question reads change" and "other resources are not simulated" no longer hold for subcategories. The subcategory kinds draw from their own seeded stream, outside the Products mix, so a seed's Products history is the same as before ([ADR-0037](0037-resolve-a-ties-reference-through-the-other-anchors-key-and-skip-one-not-yet-known.md)).

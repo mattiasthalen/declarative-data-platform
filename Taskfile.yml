@@ -52,7 +52,7 @@ tasks:
       - uv run ingest -- {{.CLI_ARGS}}
 
   simulate:
-    desc: Append one seeded, changed copy of the latest Products load to the lake
+    desc: Append one seeded, changed copy of the latest Products and ProductSubcategories loads to the lake
     cmds:
       - uv run simulate {{.CLI_ARGS}}
 

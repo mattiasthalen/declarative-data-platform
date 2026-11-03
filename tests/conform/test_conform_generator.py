@@ -7,7 +7,21 @@ from datetime import UTC, datetime
 import pytest
 import yaml
 
-from harness import CONTRACT, CONTRACT_PATH, REPO, SNAKE, epoch_us, load_id, product, q, require
+from harness import (
+    CONTRACT,
+    CONTRACT_PATH,
+    REPO,
+    SNAKE,
+    SUBCATEGORIES,
+    SUBCATEGORIES_CONTRACT_PATH,
+    epoch_us,
+    load_id,
+    product,
+    q,
+    require,
+    subcategory,
+    write_load,
+)
 
 PLATFORM = {
     "_dlt__load_id",
@@ -29,9 +43,16 @@ BUSINESS = {
 }
 
 
+SUBCATEGORY_LOAD = "1717001800.25"
+SUBCATEGORY_ROWS = [
+    subcategory(1, "Mountain Bikes", category=1),
+    subcategory(4, "Bottom Brackets", category=2, modified="2008-04-30"),
+]
+
+
 @pytest.fixture(scope="module")
 def staged(make_workspace):
-    """One load of three products, built through raw and conform only."""
+    """One load of three products and one of two subcategories, built through raw and conform only."""
     ws = make_workspace("conform")
     rows = [
         product(1, "CF-0001", "Trailing space", line="R "),
@@ -39,6 +60,7 @@ def staged(make_workspace):
         product(3, "CF-0003", "Null line", line=None),
     ]
     landed = ws.write_load(1, rows)
+    write_load(ws.lake, SUBCATEGORY_LOAD, SUBCATEGORY_ROWS, resource=SUBCATEGORIES)
     require(ws.generate())
     snap = ws.snapshot("built", require(ws.build("--select", "+path:models/conform")))
     return snap, landed
@@ -132,3 +154,28 @@ def test_product_contract_lives_in_its_source_folder():
         f"models/conform/adventure_works/{CONTRACT}.yml",
     ):
         assert (REPO / generated).is_file(), generated
+
+
+def test_product_subcategories(staged):
+    """Story #6 AC13 ([13]): contracts/adventure_works/product_subcategories.yaml declares
+    adventure_works__product_subcategories, and conform stages its landed rows with snake_case columns,
+    the six platform columns and the feed's values."""
+    contract = yaml.safe_load((REPO / SUBCATEGORIES_CONTRACT_PATH).read_text())
+    assert contract["id"] == SUBCATEGORIES, contract["id"]
+    snap, _ = staged
+    tables = {n for n, kind in snap.relations("conform").items() if kind == "BASE TABLE"}
+    assert SUBCATEGORIES in tables, f"conform stages no {SUBCATEGORIES}: {sorted(tables)}"
+    columns = snap.columns("conform", SUBCATEGORIES)
+    assert {c for c in columns if c.startswith("_dlt__")} == PLATFORM
+    assert {"product_subcategory_id", "product_category_id", "name", "rowguid", "modified_date"} <= set(columns), columns
+    assert [c for c in columns if not SNAKE.match(c)] == []
+    rows = snap.sql(
+        "select product_subcategory_id, product_category_id, name, rowguid, "
+        "cast(cast(modified_date as date) as varchar), _dlt__load_id, epoch_us(_dlt__extracted_at) "
+        f"from conform.{q(SUBCATEGORIES)} order by 1"
+    )
+    assert rows == [
+        (1, 1, "Mountain Bikes", SUBCATEGORY_ROWS[0]["Rowguid"], "2008-04-30", SUBCATEGORY_LOAD, epoch_us(SUBCATEGORY_LOAD)),
+        (4, 2, "Bottom Brackets", SUBCATEGORY_ROWS[1]["Rowguid"], "2008-04-30", SUBCATEGORY_LOAD, epoch_us(SUBCATEGORY_LOAD)),
+    ]
+    assert snap.staged() == CONTRACT, "the Products staged table is not the one its contract names"
