@@ -52,8 +52,8 @@ body { font-family: Inter, sans-serif; color: var(--text); -webkit-font-smoothin
 .side .label { position: absolute; left: 0; right: 0; top: 486px; text-align: center; font-size: 15px; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--label); }
 
-.zoom { left: 120px; top: 268px; width: 1680px; height: 604px; }
-.zoom svg { position: absolute; inset: 0; width: 1680px; height: 604px; overflow: visible; }
+.zoom { left: 120px; top: 268px; width: 1680px; }
+.zoom svg { position: absolute; left: 0; top: 0; width: 1680px; overflow: visible; }
 .zoom .label { position: absolute; left: 0; top: -2px; font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); }
 .tilename { font-family: 'JetBrains Mono', monospace; font-size: 14px; fill: var(--label); }
 .tilename .of { fill: var(--muted); font-size: 12px; }

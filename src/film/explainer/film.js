@@ -15,10 +15,10 @@ const COLOUR = { raw: 'var(--raw)', contract: 'var(--contract)', anchor: 'var(--
 
 // The words on screen for each layer chapter: what it does, and the shapes either side of its declaration.
 const LAYERS = {
-  ingest: { n: 1, title: 'Ingest', sub: 'Lands every load in the lake, as it came.', before: ['feed', 'THE SOURCE'], after: ['raw', 'RAW, IN THE LAKE'], colour: 'raw', zoom: ['resource declared', 'resources declared'] },
-  conform: { n: 2, title: 'Conform', sub: 'Types every row by its data contract.', before: ['raw', 'RAW'], after: ['grid', 'TYPED AND STAGED'], colour: 'contract', zoom: ['contract declared', 'contracts declared'] },
-  integrate: { n: 3, title: 'Integrate', sub: 'Keeps every change, true to Anchor Modeling.', before: ['grid', 'STAGED'], after: ['anchor', 'THE ANCHOR MODEL'], colour: 'anchor', zoom: ['anchor in the model', 'anchors in the model'] },
-  serve: { n: 4, title: 'Serve', sub: 'Answers questions through one bridge.', before: ['anchor', 'THE ANCHOR MODEL'], after: ['star', 'TODAY, A STAR SCHEMA'], colour: 'serve', zoom: ['dimension and the bridge, today', 'dimensions and the bridge, today'] },
+  ingest: { n: 1, title: 'Ingest', sub: 'Lands every load in the lake, as it came.', before: ['feed', 'THE SOURCE'], after: ['raw', 'RAW, IN THE LAKE'], colour: 'raw', zoom: ['resource', 'resource declared', 'resources declared'] },
+  conform: { n: 2, title: 'Conform', sub: 'Types every row by its data contract.', before: ['raw', 'RAW'], after: ['grid', 'TYPED AND STAGED'], colour: 'contract', zoom: ['contract', 'contract declared', 'contracts declared'] },
+  integrate: { n: 3, title: 'Integrate', sub: 'Keeps every change, true to Anchor Modeling.', before: ['grid', 'STAGED'], after: ['anchor', 'THE ANCHOR MODEL'], colour: 'anchor', zoom: ['anchor', 'anchor in the model', 'anchors in the model'] },
+  serve: { n: 4, title: 'Serve', sub: 'Answers questions through one bridge.', before: ['anchor', 'THE ANCHOR MODEL'], after: ['star', 'TODAY, A STAR SCHEMA'], colour: 'serve', zoom: ['dimension', 'dimension and the bridge, today', 'dimensions and the bridge, today'] },
 };
 
 const chapterOf = Object.fromEntries(F.chapters.map((c) => [c.name, c]));
@@ -156,23 +156,56 @@ function typeCard(box, t, t0) {
 }
 
 // ------------------------------------------------------------------ zoom-outs
-const ZOOM_W = 1680, ZOOM_H = 560;
-function tileShape(tile, box, colour) {
-  const { x, y, w } = box, cx = x + w / 2, cy = y + 34 + w / 2;
+// The tiles sit on F.zoom's grid, shifted down by the box's top band where its label goes.
+const BOX = F.zoom_box;
+const MONO = 0.6; // JetBrains Mono's advance, in ems: how wide a tile's name is drawn
+// What a tile draws beyond its square, as offsets from the square's centre and its bottom edge.
+const halo = (tile, w, attributes) => (attributes && tile.kind === 'anchor' && tile.attributes ? w * 0.98 : tile.kind === 'bridge' ? w * 0.56 : w * 0.5);
+const nameOf = (tile) => (tile.name.includes('__') ? tile.name.split('__') : ['', tile.name]);
+function extent(tile, box, labels, attributes) {
+  const { x, y, w } = box, cx = x + w / 2, cy = y + BOX.top + w / 2, r = halo(tile, w, attributes);
+  let [x0, y0, x1, y1] = [cx - r, cy - r, cx + r, cy + r];
+  if (labels) {
+    const [owner, own] = nameOf(tile), below = belowOf(tile, w, attributes);
+    const half = Math.max(own.length * 14, owner.length * 12) * MONO / 2;
+    x0 = Math.min(x0, cx - half); x1 = Math.max(x1, cx + half);
+    y1 = Math.max(y1, y + BOX.top + w + below + 26 + (owner ? 19 : 0) + 5);
+  }
+  return [x0, y0, x1, y1];
+}
+const belowOf = (tile, w, attributes) => (attributes && tile.kind === 'anchor' && tile.attributes ? w * 0.48 : 0);
+// The most a zoom-out can draw without any two tiles touching or a tile leaving the box: names and
+// attributes when there is room for them, then the one that fits, then the bare squares.
+function detail(tiles, placed) {
+  const fits = (labels, attributes) => {
+    const boxes = tiles.map((tile, i) => extent(tile, placed[i], labels, attributes));
+    for (const [x0, y0, x1, y1] of boxes) if (x0 < 0 || y0 < BOX.top || x1 > BOX.width || y1 > BOX.height) return false;
+    for (let i = 0; i < boxes.length; i++)
+      for (let j = i + 1; j < boxes.length; j++) {
+        const [a, b] = [boxes[i], boxes[j]];
+        if (a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]) return false;
+      }
+    return true;
+  };
+  for (const [labels, attributes] of [[true, true], [true, false], [false, true], [false, false]])
+    if (fits(labels, attributes)) return { labels, attributes };
+  return { labels: false, attributes: false };
+}
+function tileShape(tile, box, colour, { labels, attributes }) {
+  const { x, y, w } = box, top = y + BOX.top, cx = x + w / 2, cy = top + w / 2;
   const stroke = COLOUR[colour];
-  const claimed = tile.featured || tile.kind === 'bridge' || tile.kind === 'build';
+  const claimed = tile.featured || tile.kind === 'bridge';
   const fill = claimed ? 'var(--claimed)' : 'var(--surface)';
   const r = Math.max(3, w * 0.16);
   let body;
-  if (tile.kind === 'next') body = `<rect x="${x}" y="${y + 34}" width="${w}" height="${w}" rx="${r}" fill="none" stroke="var(--label)" stroke-dasharray="7 6" stroke-width="2"/>`;
+  if (tile.kind === 'next') body = `<rect x="${x}" y="${top}" width="${w}" height="${w}" rx="${r}" fill="none" stroke="var(--label)" stroke-dasharray="7 6" stroke-width="2"/>`;
   else if (tile.kind === 'bridge') body = `<polygon points="${cx},${cy - w * 0.56} ${cx + w * 0.56},${cy} ${cx},${cy + w * 0.56} ${cx - w * 0.56},${cy}" fill="${fill}" stroke="${stroke}" stroke-width="2.4"/>`;
-  else body = `<rect x="${x}" y="${y + 34}" width="${w}" height="${w}" rx="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${claimed ? 2.4 : 2}"/>`;
+  else body = `<rect x="${x}" y="${top}" width="${w}" height="${w}" rx="${r}" fill="${fill}" stroke="${stroke}" stroke-width="${claimed ? 2.4 : 2}"/>`;
   if (claimed) body += `<circle cx="${cx}" cy="${cy}" r="${Math.max(3, w * 0.07)}" fill="${stroke}"/>`;
-  const [owner, own] = tile.name.includes('__') ? tile.name.split('__') : ['', tile.kind === 'next' ? 'next shape' : tile.name];
-  const below = tile.kind === 'anchor' && tile.attributes ? w * 0.48 : 0;
-  const label = w >= 56 ? `<text class="tilename" x="${cx}" y="${y + 34 + w + 26 + below}" text-anchor="middle">${esc(own)}` +
+  const [owner, own] = nameOf(tile);
+  const label = labels ? `<text class="tilename" x="${cx}" y="${top + w + 26 + belowOf(tile, w, attributes)}" text-anchor="middle">${esc(own)}` +
     (owner ? `<tspan class="of" x="${cx}" dy="19">${esc(owner)}</tspan>` : '') + '</text>' : '';
-  if (tile.kind === 'anchor') {
+  if (attributes && tile.kind === 'anchor') {
     // the anchor's attributes, as the hero draws them: small circles around it
     for (let k = 0; k < tile.attributes; k++) {
       const a = -Math.PI / 2 + (k / tile.attributes) * Math.PI * 2, rr = w * 0.86;
@@ -183,17 +216,18 @@ function tileShape(tile, box, colour) {
   }
   return `<g class="ztile" style="transform-origin:${cx}px ${cy}px">${body}${label}</g>`;
 }
-function zoom(name, colour, label) {
+function zoom(name, colour, [counted, one, many]) {
   const box = el('div', 'layer zoom');
-  const tiles = [...chapterOf[name].zoom_out.tiles];
-  if (name === 'serve') tiles.push({ kind: 'next', name: 'next shape' });
-  const placed = F.zoom[name];
+  box.style.height = `${BOX.height}px`;
+  const tiles = chapterOf[name].zoom_out.tiles, placed = F.zoom[name];
   const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', `0 0 ${ZOOM_W} 604`);
-  svg.innerHTML = tiles.map((tile, i) => tileShape(tile, placed[i], colour)).join('');
+  svg.setAttribute('viewBox', `0 0 ${BOX.width} ${BOX.height}`);
+  svg.style.height = `${BOX.height}px`;
+  const shown = detail(tiles, placed);
+  svg.innerHTML = tiles.map((tile, i) => tileShape(tile, placed[i], colour, shown)).join('');
   box.appendChild(svg);
-  const count = chapterOf[name].zoom_out.tiles.length;
-  box.appendChild(el('div', 'label', `The whole model · ${count} ${esc(count === 1 ? label[0] : label[1])}`));
+  const count = tiles.filter((tile) => tile.kind === counted).length;
+  box.appendChild(el('div', 'label', `The whole model · ${count} ${esc(count === 1 ? one : many)}`));
   return box;
 }
 function growZoom(box, t, t0) {
@@ -268,9 +302,8 @@ for (const name of ['ingest', 'conform', 'integrate', 'serve']) {
     const sides = outCubic(prog(t, close.start + 0.3, close.start + 1.0)) * (1 - out);
     st(left, { op: sides, x: -(1 - sides) * 30 });
     st(right, { op: sides, x: (1 - sides) * 30 });
-    buildShape(left, t, 0, 0, left.kind !== 'feed');
+    buildShape(left, t, 0, 0, true);
     buildShape(right, t, close.start + 3.5, close.start + 8.5, false);
-    if (left.kind === 'feed') buildShape(left, t, 0, 0, true);
     cards.forEach((box, k) => {
       const t0 = close.start + k * per, t1 = k === cards.length - 1 ? far.start + 0.5 : t0 + per;
       const a = outCubic(prog(t, t0 + 0.2, t0 + 0.8)), b = inCubic(prog(t, t1 - 0.5, t1));
@@ -289,7 +322,7 @@ for (const name of ['ingest', 'conform', 'integrate', 'serve']) {
   const head = header("One schedule", 'Orchestration', 'Every source in its own run, then one build.');
   const box = card(c.close_up[0], 'anchor');
   const left = el('div', 'layer side left'), right = el('div', 'layer side right');
-  const sources = c.zoom_out.tiles.filter((tile) => tile.kind === 'source');
+  const sources = c.zoom_out.tiles;
   const lsvg = document.createElementNS(NS, 'svg'); lsvg.setAttribute('viewBox', '0 0 340 340');
   const h = Math.min(70, 260 / sources.length);
   lsvg.innerHTML = sources.map((src, i) => `<g class="src" data-i="${i}"><rect x="90" y="${170 - (sources.length * h) / 2 + i * h + 6}" width="${h - 12}" height="${h - 12}" rx="8" fill="var(--surface)" stroke="var(--raw)" stroke-width="2"/>` +

@@ -1,8 +1,6 @@
 """The hero's stage layouts, which the film draws its shapes from so the two never drift apart."""
 
-from artwork import ANCHOR, ANCHORS, ATTRIBUTES, BRIDGE, GRID, LEFT, RAW, RIGHT, SPOKES, STAR, TIE
-
-__all__ = ["ANCHOR", "ANCHORS", "ATTRIBUTES", "BRIDGE", "GRID", "LEFT", "RAW", "RIGHT", "SPOKES", "STAR", "TIE"]
+from artwork import ANCHOR, ANCHORS, ATTRIBUTES, BRIDGE, GRID, RAW, SPOKES, STAR
 
 
 def as_data() -> dict:
@@ -14,7 +12,7 @@ def as_data() -> dict:
         "star": STAR,
         "anchors": sorted(ANCHORS),
         "attributes": sorted(ATTRIBUTES),
-        "tie": [i for i in range(9) if i not in ANCHORS and i not in ATTRIBUTES],
+        "tie": [i for i in range(len(ANCHOR)) if i not in ANCHORS and i not in ATTRIBUTES],
         "bridge": BRIDGE,
         "spokes": SPOKES,
     }

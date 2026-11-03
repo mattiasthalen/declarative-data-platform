@@ -59,14 +59,14 @@ def build(root: Path) -> dict:
                 "close_up": [close_up(root, MODEL, start=_anchor_line(root, FEATURED_ANCHOR))],
                 "zoom_out": {
                     "tiles": [{"kind": "dimension", "name": anchor["descriptor"].lower(), "featured": anchor["mnemonic"] == FEATURED_ANCHOR} for anchor in anchors]
-                    + [{"kind": "bridge", "name": "_bridge"}]
+                    + [{"kind": "bridge", "name": "_bridge"}, {"kind": "next", "name": "next shape"}]
                 },
             },
             {
                 "name": "orchestration",
                 "declaration": SCHEDULE,
                 "close_up": [close_up(root, SCHEDULE, start=_line_starting(root, SCHEDULE, "deployments:"))],
-                "zoom_out": {"tiles": [{"kind": "source", "name": p.name} for p in _source_folders(root)] + [{"kind": "build", "name": "build"}]},
+                "zoom_out": {"tiles": [{"kind": "source", "name": p.name} for p in _source_folders(root)]},
             },
             {"name": "lockup", "declaration": None, "close_up": [], "zoom_out": {"tiles": []}},
         ]

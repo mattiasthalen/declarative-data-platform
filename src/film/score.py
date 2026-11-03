@@ -222,11 +222,16 @@ def _master(mix: np.ndarray, duration: float, rng) -> bytes:
     peak = float(np.max(np.abs(mix))) or 1.0
     mix *= 10 ** (-1 / 20) / peak
     dither = (rng.random(mix.shape) - rng.random(mix.shape)) / 32768
-    pcm = np.clip(np.round((mix + dither) * 32767), -32768, 32767).astype("<i2")
+    return wav(mix + dither, SR)
+
+
+def wav(samples: np.ndarray, rate: int) -> bytes:
+    """16-bit PCM WAV of ``samples`` in -1..1: one column per channel, or a flat array for mono."""
+    pcm = np.clip(np.round(samples * 32767), -32768, 32767).astype("<i2")
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as writer:
-        writer.setnchannels(2)
+        writer.setnchannels(1 if samples.ndim == 1 else samples.shape[1])
         writer.setsampwidth(2)
-        writer.setframerate(SR)
+        writer.setframerate(rate)
         writer.writeframes(pcm.tobytes())
     return buffer.getvalue()
