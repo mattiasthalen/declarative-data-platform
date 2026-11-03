@@ -9,9 +9,12 @@ shapes ([5]). These tests read the file as a browser's cascade would, closely en
   ``animation: none`` reaches every element that animates. A failure names the element and the
   rule that animates it.
 - ``-k hero_motion_still`` (AC7, EC4): with every ``animation*`` declaration removed, the visible
-  drawn shapes are #37's still, ``tests/fixtures/hero-still.svg`` (``docs/hero.svg`` at 4a8b54c
-  without its ``@font-face`` rules and ``<metadata>``), compared as a multiset with numbers to
-  0.01. Checked with motion allowed and with reduced motion requested.
+  drawn shapes are the still, ``tests/fixtures/hero-still.svg`` (``docs/hero.svg`` at 4a8b54c
+  without its ``@font-face`` rules and ``<metadata>``, its bridge since made a diamond by #46),
+  compared as a multiset with numbers to 0.01. Checked with motion allowed and with reduced
+  motion requested.
+- ``-k hero_bridge_diamond`` (#46): the bridge is the explainer film's lit diamond, and every
+  spoke starts on its edge.
 
 What the still comparison reads:
 
@@ -965,7 +968,7 @@ def compare(still: list[Shape], hero: list[Shape]) -> tuple[list[Shape], list[Sh
 
 
 def test_hero_motion_still_fixture_reads():
-    """AC7: the fixture is #37's still as these tests read it: 52 visible shapes (2 backgrounds,
+    """AC7: the fixture is the still as these tests read it: 52 visible shapes (2 backgrounds,
     3 texts, 9 raw tiles, 3 pages of 2 paths, 8 page lines, 8 spokes, 8 ring tiles, the centre
     tile and its dot, 6 trail dots), and it matches itself in both modes."""
     for mode in ("motion", "reduced"):
@@ -991,5 +994,45 @@ def test_hero_motion_still(mode):
     lines = [f"missing: {s.describe()}" for s in missing] + [f"extra:   {s.describe()}" for s in extra]
     assert not lines, (
         f"with animation removed (reduced motion {'on' if mode == 'reduced' else 'off'}), assets/hero.svg "
-        f"does not draw #37's still ({len(missing)} missing, {len(extra)} extra):\n" + "\n".join(lines)
+        f"does not draw the still ({len(missing)} missing, {len(extra)} extra):\n" + "\n".join(lines)
     )
+
+
+BRIDGE_CENTRE = (615.0, 125.0)
+BRIDGE_RADIUS = 13.0
+LIT_FILL, LIT_STROKE = "#3d3a64", "#9184d9"
+
+
+def test_hero_bridge_diamond():
+    """#46: at rest, the bridge is the film's: a diamond of radius 13 at the star's centre, filled
+    and stroked in the accent, with its dot, and no lit square; each of the eight spokes starts on
+    the diamond's edge, r / (|ux| + |uy|) from the centre along the spoke."""
+    shapes = drawn_shapes(HERO, "motion")
+    cx, cy = BRIDGE_CENTRE
+    r = BRIDGE_RADIUS
+    lit = [s for s in shapes if s.values.get("fill", "").lower() == LIT_FILL]
+    diamond = (cx, cy - r, cx + r, cy, cx, cy + r, cx - r, cy)
+    assert [s.tag for s in lit] == ["polygon"], (
+        "assets/hero.svg's lit shapes at rest are not one diamond:\n" + "\n".join(s.describe() for s in lit)
+    )
+    assert close(lit[0].values["points"], diamond), f"the bridge is not the radius-13 diamond at the centre: {lit[0].describe()}"
+    assert lit[0].values["stroke"].lower() == LIT_STROKE, f"the bridge is not stroked in the accent: {lit[0].describe()}"
+    assert any(s.tag == "circle" and close((s.values["cx"], s.values["cy"], s.values["r"]), (cx, cy, 3.5)) for s in shapes), (
+        "the bridge has no accent dot (r 3.5) at its centre"
+    )
+    spokes = []
+    for s in shapes:
+        if s.tag != "line":
+            continue
+        ends = [(s.values["x1"], s.values["y1"]), (s.values["x2"], s.values["y2"])]
+        near, far = sorted(ends, key=lambda p: math.hypot(p[0] - cx, p[1] - cy))
+        if math.hypot(near[0] - cx, near[1] - cy) < 20:
+            spokes.append((near, far, s))
+    assert len(spokes) == 8, f"expected 8 spokes from the bridge, found {len(spokes)}"
+    for near, far, s in spokes:
+        length = math.hypot(far[0] - cx, far[1] - cy)
+        ux, uy = (far[0] - cx) / length, (far[1] - cy) / length
+        edge = r / (abs(ux) + abs(uy))
+        assert abs(math.hypot(near[0] - cx, near[1] - cy) - edge) <= TOLERANCE, (
+            f"a spoke does not start on the diamond's edge ({edge:.2f} from the centre): {s.describe()}"
+        )

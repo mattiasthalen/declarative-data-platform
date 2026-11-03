@@ -271,10 +271,10 @@ and kept with the run's spec. The reviewer records pass or fail for each line be
 
 Render `assets/hero.svg` (moved from `docs/` by story #38; with its animation off, or once the motion has come to rest) and place it beside `hero-mockup.svg`. Pass when all hold:
 
-1. Left to right: the wordmark DECLARATIVE / DATA PLATFORM on two lines with the layer line `ingest · conform · integrate · serve` under it; nine raw tiles slightly out of line; a fanned stack of three pages, the front one with indented key and value lines; a star of one centre tile and eight tiles on a ring, each joined to the centre.
+1. Left to right: the wordmark DECLARATIVE / DATA PLATFORM on two lines with the layer line `ingest · conform · integrate · serve` under it; nine raw tiles slightly out of line; a fanned stack of three pages, the front one with indented key and value lines; a star of one lit diamond, the bridge, at the centre and eight tiles on a ring, each joined to it, the bridge drawn as the explainer film draws it.
 2. A dotted trail of three dots sits in each gap and brightens toward the star.
 3. The gaps between raw, pages and star are equal to the eye.
-4. Raw tiles, pages, dots and star tiles share one shade; the centre tile is the only thing in the accent colour.
+4. Raw tiles, pages, dots and star tiles share one shade; the centre diamond is the only thing in the accent colour.
 5. No line shows through or beneath a tile or page.
 
 ## Hero on GitHub (AC9, EC4)
@@ -298,7 +298,7 @@ line below.
 `tests/fixtures/hero-motion-mockup.svg`, reloading to replay it. Pass when all hold:
 
 1. The wordmark, the layer line, the nine raw tiles and the three pages stay where #37's still has them throughout; only copies of the raw tiles, the Anchor shapes, the stage lines and the dots of the two trails move.
-2. Four stages, in this order, each change lighting one page, back to front: (1) raw, the copies appear on the raw tiles; (2) the back page lights and the copies tidy into a 3 by 3 grid; (3) the middle page lights and they become Anchor notation: two anchors (squares, both lit in the accent), each with three historized attributes (double circles), the anchors joined by a tie (diamond); (4) the front page lights, the tie slides into the centre and becomes the lit bridge, the attributes and anchors move out to the ring as dimensions, the anchors' light passes to the bridge, and the spokes and the glow appear.
+2. Four stages, in this order, each change lighting one page, back to front: (1) raw, the copies appear on the raw tiles; (2) the back page lights and the copies tidy into a 3 by 3 grid; (3) the middle page lights and they become Anchor notation: two anchors (squares, both lit in the accent), each with three historized attributes (double circles), the anchors joined by a tie (diamond); (4) the front page lights, the tie slides into the centre and lights up as the bridge, still a diamond, the attributes and anchors move out to the ring as dimensions, the anchors' light passes to the bridge, and the spokes and the glow appear.
 3. The two dot trails move with the stages. The mockup predates this revision (Mattias, 2026-11-02), so the trails are judged against this item, not the mockup. The raw-to-pages dots (the feed) pulse as data coming in until the star forms. The pages-to-model dots stay dark until the first shape forms, and at each change of model they drop and reconnect dot by dot. At each change the feed pulse runs on into the reconnecting trail, so the change reads as one wave from the raw tiles to the new model. One extra feed pulse runs between changes. At rest both trails show the still's opacities.
 4. It ends on #37's still (the "Hero drawing" rubric above holds for the last frame) and stays there: about 6 s of motion within an 11 s run, played once, and it does not loop.
 5. Nothing flickers, jumps or shows a half-built frame at the start or the end; the stages read in the mockup's order and spacing (exact easing and per-tile stagger are not judged).
