@@ -305,7 +305,7 @@ def add_weight_attribute(ws: Workspace) -> tuple[str, str]:
     """Add PR_WGT_Product_Weight (double) to the model and its mapping; returns (integrate name, serve column)."""
 
     def change(model):
-        model["schema"]["anchor"][0]["attribute"].append(
+        next(a for a in model["schema"]["anchor"] if a["mnemonic"] == "PR")["attribute"].append(
             {
                 "mnemonic": "WGT",
                 "descriptor": "Weight",
@@ -356,3 +356,29 @@ def add_vendor_anchor_first(ws: Workspace) -> None:
         "attributes": [{"attribute": "NAM", "column": "name"}],
     }
     (ws.root / "anchor" / "mappings" / "VE_Vendor.yaml").write_text(yaml.safe_dump(mapping, sort_keys=False), encoding="utf-8")
+
+
+def declared(ws: Workspace) -> tuple[list[str], list[str]]:
+    """(``<mnemonic>_<descriptor>`` of each anchor, the name of each tie) in ``ws``'s model, in model order."""
+    schema = yaml.safe_load(model_path(ws).read_text(encoding="utf-8"))["schema"]
+    anchors = schema.get("anchor") or []
+    ties = schema.get("tie") or []
+    anchors = anchors if isinstance(anchors, list) else [anchors]
+    ties = ties if isinstance(ties, list) else [ties]
+    names = []
+    for tie in ties:
+        roles = tie.get("anchorRole") or tie.get("role") or []
+        roles = roles if isinstance(roles, list) else [roles]
+        names.append("_".join(f"{r.get('type')}_{r.get('role')}" for r in roles))
+    return [f"{a['mnemonic']}_{a['descriptor']}" for a in anchors], names
+
+
+def contracts(ws: Workspace) -> list[str]:
+    """The id of each contract, in the order conform reads them: by source folder, then file name."""
+    found = sorted((ws.root / "contracts").glob("*/*.yaml"))
+    return [yaml.safe_load(path.read_text(encoding="utf-8"))["id"] for path in found]
+
+
+def entity(descriptor: str) -> str:
+    """Serve's entity name for an anchor descriptor: ``ProductSubcategory`` is ``product_subcategory``."""
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", descriptor).lower()

@@ -24,10 +24,11 @@ def ws(shared):
 
 
 def test_erd_conform(ws):
-    """AC2: one entity, adventure_works__products, with exactly one row: `bigint product_id PK`."""
+    """AC2: one entity per contract, in file order (story #6 adds adventure_works__product_subcategories);
+    adventure_works__products with exactly one row: `bigint product_id PK`."""
     erd.ok(erd.generate(ws, "conform"))
     shown = erd.layer_diagram(ws, "conform")
-    assert list(shown.entities) == [CONTRACT], shown.lines
+    assert list(shown.entities) == erd.contracts(ws), shown.lines
     assert shown.rows(CONTRACT) == [("bigint", "product_id", "PK", None)], shown.lines
     assert shown.relationships == [], shown.lines
 
@@ -38,6 +39,7 @@ def test_erd_conform_contract_without_primary_key(ws):
     name = erd.add_contract(ws, "customers", primary_key=False)
     erd.ok(erd.generate(ws, "conform"))
     shown = erd.layer_diagram(ws, "conform")
-    assert list(shown.entities) == [name, CONTRACT], shown.lines
+    assert list(shown.entities) == erd.contracts(ws), shown.lines
+    assert list(shown.entities)[0] == name, shown.lines
     assert shown.entities[name] is None, f"{name} is not a bare entity on a line of its own:\n" + "\n".join(shown.lines)
     assert shown.rows(CONTRACT) == [("bigint", "product_id", "PK", None)], shown.lines

@@ -38,7 +38,8 @@ def test_erd_serve(ws):
     `_valid_to`; one relationship from `_bridge` to `product`; no staged bridge."""
     erd.ok(erd.generate(ws, "serve"))
     shown = erd.layer_diagram(ws, "serve")
-    assert list(shown.entities) == ["product", "_bridge"], shown.lines
+    dimensions = [erd.entity(name.split("_", 1)[1]) for name in erd.declared(ws)[0]]
+    assert list(shown.entities) == [*dimensions, "_bridge"], shown.lines
     assert not any(name.startswith("bridge__") for name in shown.entities), shown.lines
 
     assert shown.columns("product") == ["_key__product", "product__valid_from", "product__valid_to"] + [
@@ -49,9 +50,11 @@ def test_erd_serve(ws):
     for _, kind, column in PR_ATTRIBUTES:
         assert types[column] == kind, f"{column} is typed {types[column]}, its dataRange is {kind}"
 
-    assert shown.columns("_bridge") == ["stage", "_key__product", "_valid_from", "_valid_to"], "\n".join(shown.lines)
-    assert keys(shown, "_bridge")["_key__product"] == "FK", "\n".join(shown.lines)
-    assert shown.relationships == [relationship("product")], shown.relationships
+    assert shown.columns("_bridge") == ["stage", *(f"_key__{d}" for d in dimensions), "_valid_from", "_valid_to"], (
+        "\n".join(shown.lines)
+    )
+    assert all(keys(shown, "_bridge")[f"_key__{d}"] == "FK" for d in dimensions), "\n".join(shown.lines)
+    assert shown.relationships == [relationship(d) for d in dimensions], shown.relationships
 
 
 def test_erd_serve_two_anchors(ws):
@@ -60,13 +63,15 @@ def test_erd_serve_two_anchors(ws):
     erd.add_vendor_anchor_first(ws)
     erd.ok(erd.generate(ws, "serve"))
     shown = erd.layer_diagram(ws, "serve")
-    assert list(shown.entities) == ["vendor", "product", "_bridge"], shown.lines
+    dimensions = [erd.entity(name.split("_", 1)[1]) for name in erd.declared(ws)[0]]
+    assert dimensions[:2] == ["vendor", "product"], dimensions
+    assert list(shown.entities) == [*dimensions, "_bridge"], shown.lines
     assert shown.columns("vendor") == ["_key__vendor", "vendor__valid_from", "vendor__valid_to", "vendor__name"], (
         "\n".join(shown.lines)
     )
-    assert shown.columns("_bridge") == ["stage", "_key__vendor", "_key__product", "_valid_from", "_valid_to"], (
+    assert shown.columns("_bridge") == ["stage", *(f"_key__{d}" for d in dimensions), "_valid_from", "_valid_to"], (
         "\n".join(shown.lines)
     )
     bridge = keys(shown, "_bridge")
-    assert bridge["_key__vendor"] == bridge["_key__product"] == "FK", "\n".join(shown.lines)
-    assert shown.relationships == [relationship("vendor"), relationship("product")], shown.relationships
+    assert all(bridge[f"_key__{d}"] == "FK" for d in dimensions), "\n".join(shown.lines)
+    assert shown.relationships == [relationship(d) for d in dimensions], shown.relationships
