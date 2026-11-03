@@ -26,9 +26,10 @@ DUCK = 10 ** (-18 / 20)  # and further down while a line is spoken
 DUCK_LEAD, DUCK_RELEASE = 0.15, 0.4
 
 # One chord a bar: Am, C/G, F, E, until the lockup rests on Am.
-CHORDS = [[57, 60, 64], [55, 60, 64], [53, 57, 60], [52, 56, 59]]
-ROOTS = [33, 31, 29, 28]
-ARPEGGIOS = [[69, 72, 76, 81], [67, 72, 76, 79], [65, 69, 72, 77], [64, 68, 71, 76]]
+PROGRESSION = ["Am", "C/G", "F", "E"]
+CHORDS = {"Am": [57, 60, 64], "C/G": [55, 60, 64], "F": [53, 57, 60], "E": [52, 56, 59]}
+ROOTS = {"Am": 33, "C/G": 31, "F": 29, "E": 28}
+ARPEGGIOS = {"Am": [69, 72, 76, 81], "C/G": [67, 72, 76, 79], "F": [65, 69, 72, 77], "E": [64, 68, 71, 76]}
 ARPEGGIO_ORDER = [0, 1, 2, 3, 2, 1, 0, 2]
 
 ARRANGEMENT = {
@@ -58,14 +59,14 @@ def render(duration: float, cues: list[tuple[float, float]]) -> bytes:
     for k in np.arange(0, duration, BAR / 16):
         bar = int(k // BAR)
         if "bass" in playing(k):
-            note = ROOTS[bar % 4] + (12 if round(k / (BAR / 16)) % 2 else 0)
+            note = ROOTS[PROGRESSION[bar % 4]] + (12 if round(k / (BAR / 16)) % 2 else 0)
             opened = min(1.0, (k - _first(playing, "bass", duration)) / (4 * BAR))
             _add(dry, k, _bass(note, BAR / 16 * 0.9, 1200 + 1200 * opened), 1.0)
 
     arpeggio = np.zeros((n, 2))
     for i, k in enumerate(np.arange(0, duration, BEAT / 2)):
         if "arpeggio" in playing(k):
-            note = ARPEGGIOS[int(k // BAR) % 4][ARPEGGIO_ORDER[i % 8]]
+            note = ARPEGGIOS[PROGRESSION[int(k // BAR) % 4]][ARPEGGIO_ORDER[i % 8]]
             _add(arpeggio, k, _pan(_arpeggio_note(note, BEAT / 2 * 0.9), 0.4 if i % 2 else -0.4), 0.075)
     echo = np.zeros_like(arpeggio)
     delay = int(BEAT * 0.75 * SR)
@@ -152,7 +153,7 @@ def _pad(n: int, duration: float) -> np.ndarray:
     out = np.zeros(n)
     lockup = next(b["start"] for b in timeline.beats() if b["chapter"] == "lockup")
     for i, start in enumerate(np.arange(0, duration, BAR)):
-        chord = CHORDS[0 if start >= lockup else i % 4]
+        chord = CHORDS["Am" if start >= lockup else PROGRESSION[i % 4]]
         notes = chord + [chord[0] + 12]
         length = BAR + 0.6
         x = np.arange(int(length * SR)) / SR
