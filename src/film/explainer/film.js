@@ -56,6 +56,18 @@ function fit(points) {
   const scale = 250 / Math.max(x1 - x0, y1 - y0);
   return (p) => [170 + (p[0] - (x0 + x1) / 2) * scale, 170 + (p[1] - (y0 + y1) / 2) * scale, scale];
 }
+// A line between two shapes runs edge to edge, as the hero draws its spokes: each shape's edge is
+// its distance from the centre along the line, for a square (half-side h), a diamond (radius r) or a circle (radius r).
+const EDGE = {
+  square: (h) => (ux, uy) => h / Math.max(Math.abs(ux), Math.abs(uy)),
+  diamond: (r) => (ux, uy) => r / (Math.abs(ux) + Math.abs(uy)),
+  circle: (r) => () => r,
+};
+function link([ax, ay, edgeA], [bx, by, edgeB], attrs) {
+  const len = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / len, uy = (by - ay) / len;
+  const a = edgeA(ux, uy), b = edgeB(ux, uy);
+  return `<line x1="${ax + ux * a}" y1="${ay + uy * a}" x2="${bx - ux * b}" y2="${by - uy * b}" ${attrs}/>`;
+}
 function shape(kind, colour) {
   const g = document.createElementNS(NS, 'g');
   const S = F.stages;
@@ -72,12 +84,15 @@ function shape(kind, colour) {
     const frame = `fill="var(--surface)" stroke="${COLOUR[colour]}" stroke-opacity="0.9" stroke-width="2"`;
     if (kind === 'anchor') {
       const anchorOf = (i) => (layout[i][0] < layout[S.tie[0]][0] ? S.anchors[0] : S.anchors[1]);
-      for (const i of S.attributes) { const [x1, y1] = centre(i), [x2, y2] = centre(anchorOf(i)); add(`<line class="ln" data-i="${i}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"/>`); }
-      for (const a of S.anchors) { const [x1, y1] = centre(a), [x2, y2] = centre(S.tie[0]); add(`<line class="ln" data-i="${S.tie[0]}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"/>`); }
+      const end = (i, edge) => { const [x, y, s] = centre(i); return [x, y, edge(s)]; };
+      const square = (s) => EDGE.square(11 * s), attribute = (s) => EDGE.circle(9 * s), tie = (s) => EDGE.diamond(12 * s);
+      const ln = (i) => `class="ln" data-i="${i}" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"`;
+      for (const i of S.attributes) add(link(end(i, attribute), end(anchorOf(i), square), ln(i)));
+      for (const a of S.anchors) add(link(end(a, square), end(S.tie[0], tie), ln(S.tie[0])));
     }
     if (kind === 'star') {
-      const [cx, cy] = centre(S.bridge);
-      layout.forEach((_, i) => { if (i !== S.bridge) { const [x, y] = centre(i); add(`<line class="ln" data-i="${i}" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"/>`); } });
+      const [cx, cy, s] = centre(S.bridge), bridge = [cx, cy, EDGE.diamond(13 * s)];
+      layout.forEach((_, i) => { if (i !== S.bridge) { const [x, y] = centre(i); add(link(bridge, [x, y, EDGE.square(11 * s)], `class="ln" data-i="${i}" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"`)); } });
     }
     layout.forEach((p, i) => {
       const [x, y, s] = at(p);
@@ -212,7 +227,7 @@ function tileShape(tile, box, colour, { labels, attributes }) {
     for (let k = 0; k < tile.attributes; k++) {
       const a = -Math.PI / 2 + (k / tile.attributes) * Math.PI * 2, rr = w * 0.86;
       const ax = cx + Math.cos(a) * rr, ay = cy + Math.sin(a) * rr;
-      body = `<line x1="${cx + Math.cos(a) * w * 0.5}" y1="${cy + Math.sin(a) * w * 0.5}" x2="${ax - Math.cos(a) * w * 0.12}" y2="${ay - Math.sin(a) * w * 0.12}" stroke="${stroke}" stroke-opacity="0.55" stroke-width="2"/>` +
+      body = link([cx, cy, EDGE.square(w / 2)], [ax, ay, EDGE.circle(w * 0.12)], `stroke="${stroke}" stroke-opacity="0.55" stroke-width="2"`) +
         `<circle cx="${ax}" cy="${ay}" r="${w * 0.12}" fill="var(--surface)" stroke="${stroke}" stroke-width="2"/>` + body;
     }
   }
