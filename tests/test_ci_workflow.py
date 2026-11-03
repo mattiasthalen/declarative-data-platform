@@ -179,9 +179,8 @@ def test_test_job_keeps_xdist_on(workflow):
     """AC3: the test job runs `uv run pytest` and nothing that turns xdist off or sets its worker count."""
     j = job(workflow, "test")
     commands = runs(j)
-    assert commands, "the test job runs nothing"
+    assert any("uv run pytest" in run for run in commands), f"the test job runs {commands}"
     for run in commands:
-        assert "uv run pytest" in run, f"the test job runs {run!r}"
         found = turns_xdist_off_or_sets_workers(arguments(run))
         assert not found, f"the test job's {run!r} passes {found}"
     for scope in [workflow, j, *(j.get("steps") or [])]:

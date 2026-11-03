@@ -146,6 +146,11 @@ def test_hero_readme_first_paragraph():
 
     block = opening_block()
     rest = readme()[block.end() :].lstrip("\r\n \t")
+    # Story #39 puts the explainer's link line between the hero and this paragraph
+    # (test_readme_explainer.py holds it).
+    first, _, after = rest.partition("\n")
+    if "Watch the two-minute explainer" in first:
+        rest = after.lstrip("\r\n \t")
     paragraph = " ".join(re.split(r"\n[ \t]*\n", rest, maxsplit=1)[0].split())
     lead = "Declarations in, structure out."
     assert paragraph.startswith(lead), f"the README's first paragraph does not start {lead!r}: {paragraph[:80]!r}"

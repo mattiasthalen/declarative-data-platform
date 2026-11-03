@@ -79,6 +79,16 @@ tasks:
     cmds:
       - uv run prefect worker start --pool "$ORCHESTRATE_WORK_POOL" --type process
 
+  film:
+    desc: Render the README's explainer into out/film/ (narrated, captioned; needs ffmpeg and task film:models)
+    cmds:
+      - uv run film render
+
+  film:models:
+    desc: Fetch the Kokoro voice files into .models/, verified by their pinned checksums (about 350 MB)
+    cmds:
+      - uv run film models
+
   orchestrate:deploy:
     desc: Deploy orchestrate/prefect.yaml (the hourly run, ingest-source, build) to $PREFECT_API_URL
     preconditions: *pool

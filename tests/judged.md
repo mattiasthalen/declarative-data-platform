@@ -416,3 +416,29 @@ Pass when all of these hold:
 2. The output's failures section names the test by its node id and shows its traceback,
    down to the failing assertion, and the short summary has a `FAILED <node id>` line.
 3. The throwaway test is not in any commit of the branch.
+
+# Judged checks for story #39 (the longer explainer)
+
+The film itself is judged at the evidence gate (AC14, Done-when 2): what it teaches, how it
+looks and how it sounds are not run. The reviewer records pass or fail for each line below.
+
+## J39-1: the film (AC14)
+
+Watch the rendered cut, `out/film/declarative-data-platform-explainer.mp4` from `uv run task
+film` (or the film on GitHub Pages, https://mattiasthalen.github.io/declarative-data-platform/),
+once with sound, then again muted. It passes
+when all of these hold:
+
+1. Each of ingest, conform, integrate and serve has a chapter that says what the layer does and
+   why it's there, in the narration and in the captions.
+2. Each chapter centres its declaration, with the shape before it on the left and its output on
+   the right.
+3. Serve is presented as today's USS, never as the only serve format.
+4. The look follows the design system (Nocturne: indigo ground, one blurple accent, Spectral
+   wordmark, Inter text, layers gaining light as they integrate), and the shapes match the
+   hero's.
+5. Muted, the captions alone tell the story.
+6. The music never covers the voice.
+
+A viewer who comes away unable to say what one of the four layers does, or why it is there,
+fails item 1 for that layer: record which, and at what time in the cut.
