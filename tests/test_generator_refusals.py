@@ -276,3 +276,70 @@ def test_integrate_refuses_tie_whose_identifier_is_another_anchor(ws):
 
     edit(ws, SUBCATEGORY_MAPPING_PATH, move)
     _refused_naming(ws, TIE)
+
+
+# --------------------------------------------------------------------------- story #6 review: tie declarations
+
+
+def _tie(model: dict) -> dict:
+    found = [t for t in model["schema"].get("tie") or [] if {r.get("role") for r in t["role"]} == {"in", "contains"}]
+    assert len(found) == 1, f"{MODEL_PATH} has {len(found)} ties of roles in and contains"
+    return found[0]
+
+
+def _role(model: dict, name: str) -> dict:
+    return next(r for r in _tie(model)["role"] if r["role"] == name)
+
+
+def _refused_with(ws: Workspace, layer: str, *words: str) -> None:
+    step = refused(ws, layer)
+    assert step.returncode == 2, f"{layer} generate exited {step.returncode}, not 2:\n{step.output[-3000:]}"
+    assert "Traceback" not in step.output, f"{layer} generate crashed:\n{step.output[-3000:]}"
+    for word in words:
+        assert word in step.output.lower(), f"the refusal does not say {word!r}:\n{step.output[-3000:]}"
+
+
+def test_integrate_refuses_tie_whose_identifier_role_is_listed_second(ws):
+    """Ledger #9: the tie with Product's identifier role listed second, and the mapping naming the tie as
+    that order spells it, is refused with exit 2, saying the identifier role must be listed first."""
+    edit(ws, MODEL_PATH, lambda m: _tie(m)["role"].reverse())
+    edit(ws, MAPPING_PATH, lambda m: _replace_value(_tie_entry(m), TIE, "PS_contains_PR_in"))
+    _refused_with(ws, "integrate", "first")
+
+
+def test_serve_refuses_a_cycle_of_ties(ws):
+    """Ledger #10: a second tie, Subcategory's identifier to Product, loaded from a column of the
+    subcategories contract, closes a cycle with PR_in_PS_contains; serve generate refuses it with exit 2,
+    naming a cycle, and does not recurse until it crashes."""
+
+    def add(m):
+        m["schema"]["tie"].append(
+            {
+                "timeRange": "timestamp",
+                "description": "A product a subcategory points back at.",
+                "role": [
+                    {"role": "groups", "type": "PS", "identifier": True, "description": "The subcategory."},
+                    {"role": "of", "type": "PR", "identifier": False, "description": "The product."},
+                ],
+            }
+        )
+
+    edit(ws, MODEL_PATH, add)
+    edit(ws, SUBCATEGORY_MAPPING_PATH, lambda m: m.update(ties=[{"tie": "PS_groups_PR_of", "column": "name"}]))
+    _refused_with(ws, "serve", "cycle")
+
+
+def test_integrate_refuses_tie_role_with_a_trailing_newline(ws):
+    """Ledger #11: a tie role written "in\\n", with the mapping naming the tie as that role spells it, is
+    refused with exit 2."""
+    edit(ws, MODEL_PATH, lambda m: _role(m, "in").update(role="in\n"))
+    edit(ws, MAPPING_PATH, lambda m: _replace_value(_tie_entry(m), TIE, "PR_in\n_PS_contains"))
+    _refused_with(ws, "integrate")
+
+
+@pytest.mark.parametrize("roles", [["in"], ["in", "contains"]])
+def test_integrate_refuses_tie_role_that_is_a_bare_value(ws, roles):
+    """Ledger #12: a tie whose role list holds bare strings instead of mappings is refused with exit 2,
+    not an AttributeError."""
+    edit(ws, MODEL_PATH, lambda m: _tie(m).update(role=list(roles)))
+    _refused_with(ws, "integrate")

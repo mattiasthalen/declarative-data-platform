@@ -90,7 +90,7 @@ def texts(node) -> list[str]:
 
 
 def checked(value, pattern: re.Pattern, what: str) -> str:
-    if not isinstance(value, str) or not pattern.match(value):
+    if not isinstance(value, str) or not pattern.fullmatch(value):
         raise ModelError(f"{what} {value!r} does not match {pattern.pattern}")
     return value
 
@@ -269,8 +269,12 @@ def ties(root: Path, schema: dict, anchors: list[tuple[Anchor, list[Attribute], 
     by_mnemonic = {anchor.mnemonic: (anchor, identifier) for anchor, _, identifier in anchors}
     declared = {}
     for node in as_list(schema.get("tie")):
+        if not isinstance(node, dict):
+            raise ModelError(f"tie {node!r} is not a mapping")
         roles = []
         for r in as_list(node.get("role")):
+            if not isinstance(r, dict):
+                raise ModelError(f"tie role {r!r} is not a mapping")
             role = checked(r.get("role"), ROLE, "tie role")
             kind = checked(r.get("type"), MNEMONIC, f"tie role {role} type")
             if kind not in by_mnemonic:
@@ -280,9 +284,11 @@ def ties(root: Path, schema: dict, anchors: list[tuple[Anchor, list[Attribute], 
         identifiers = [r for r in roles if r[2]]
         if len(roles) != 2 or len(identifiers) != 1:
             raise ModelError(f"tie {name}: only a tie of two anchor roles, one of them its identifier, is supported")
+        if not roles[0][2]:
+            raise ModelError(f"tie {name}: list its identifier role first, so the tie is named as its models are")
         if "timeRange" not in node:
             raise ModelError(f"tie {name} must be historized")
-        (owner_role, owner, _), (other_role, other, _) = sorted(roles, key=lambda r: not r[2])
+        (owner_role, owner, _), (other_role, other, _) = roles
         declared[name] = (owner_role, owner, other_role, other, node)
     loaded = {}
     for anchor, _, _ in anchors:
@@ -400,6 +406,70 @@ def json_key(*pairs: str) -> str:
     return "json_object(" + ", ".join(f"'{p}', \"{p}\"" for p in pairs) + ")"
 
 
+def history_checks(
+    name: str, m: str, posit: str, annex: str, identity: str, value: str, referenced: list, description: str
+) -> dict[str, str]:
+    """The ``ic_`` views of a historized attribute or tie: its posit's and annex's keys, the anchors
+    each ``referenced`` column must name, and positor 0 asserting one value per identity and ChangedAt."""
+    ref_posit, ref_annex = f"{{{{ ref('{posit}') }}}}", f"{{{{ ref('{annex}') }}}}"
+    return {
+        f"ic_{posit}.sql": view(
+            f"What breaks the keys of {posit}.",
+            "\nunion all\n".join(
+                [
+                    violation(posit, "duplicate primary key", json_key(f"{m}_ID"), ref_posit, f'"{m}_ID"'),
+                    violation(
+                        posit,
+                        "duplicate unique key",
+                        json_key(identity, f"{m}_ChangedAt", value),
+                        ref_posit,
+                        f'"{identity}", "{m}_ChangedAt", "{value}"',
+                    ),
+                ]
+                + [
+                    (
+                        f"select '{posit}', 'no row in {anchor.name} for {column}', "
+                        f"json_object('{column}', c.\"{column}\"), count(*)\n"
+                        f"from {ref_posit} c\nleft join {{{{ ref('{anchor.name}') }}}} p on p.\"{anchor.id}\" = c.\"{column}\"\n"
+                        f'where p."{anchor.id}" is null\ngroup by c."{column}"'
+                    )
+                    for anchor, column in referenced
+                ]
+            ),
+        ),
+        f"ic_{annex}.sql": view(
+            f"What breaks the keys of {annex}.",
+            "\nunion all\n".join(
+                [
+                    violation(
+                        annex,
+                        "duplicate primary key",
+                        json_key(f"{m}_ID", f"{m}_Positor", f"{m}_PositedAt"),
+                        ref_annex,
+                        f'"{m}_ID", "{m}_Positor", "{m}_PositedAt"',
+                    ),
+                    (
+                        f"select '{annex}', 'no row in {posit} for {m}_ID', "
+                        f"json_object('{m}_ID', c.\"{m}_ID\"), count(*)\n"
+                        f"from {ref_annex} c\nleft join {ref_posit} p on p.\"{m}_ID\" = c.\"{m}_ID\"\n"
+                        f'where p."{m}_ID" is null\ngroup by c."{m}_ID"'
+                    ),
+                ]
+            ),
+        ),
+        f"ic_{name}.sql": view(
+            description,
+            (
+                f"select '{name}' as Construct, 'more than one assertion at a time' as Violation,\n"
+                f"    json_object('{m}_Positor', 0, '{identity}', \"{identity}\", '{m}_ChangedAt', \"{m}_ChangedAt\") "
+                "as ViolationKey,\n    count(*) as Occurrences\n"
+                f"from (\n    {{{{ anchor_latest({{'mnemonic': '{m}', 'name': '{name}'}}) }}}}\n)\n"
+                f'group by "{identity}", "{m}_ChangedAt"\nhaving count(*) > 1'
+            ),
+        ),
+    }
+
+
 def integrity_files(anchor: Anchor, attributes: list[Attribute], identifier: Attribute) -> dict[str, str]:
     files = {}
     a = anchor.id
@@ -409,58 +479,10 @@ def integrity_files(anchor: Anchor, attributes: list[Attribute], identifier: Att
     )
     for t in attributes:
         m = t.prefix
-        ref_posit, ref_annex = f"{{{{ ref('{t.posit}') }}}}", f"{{{{ ref('{t.annex}') }}}}"
-        files[f"ic_{t.posit}.sql"] = view(
-            f"What breaks the keys of {t.posit}.",
-            "\nunion all\n".join(
-                [
-                    violation(t.posit, "duplicate primary key", json_key(f"{m}_ID"), ref_posit, f'"{m}_ID"'),
-                    violation(
-                        t.posit,
-                        "duplicate unique key",
-                        json_key(f"{m}_{a}", f"{m}_ChangedAt", t.name),
-                        ref_posit,
-                        f'"{m}_{a}", "{m}_ChangedAt", "{t.name}"',
-                    ),
-                    (
-                        f"select '{t.posit}', 'no row in {anchor.name} for {m}_{a}', "
-                        f"json_object('{m}_{a}', c.\"{m}_{a}\"), count(*)\n"
-                        f"from {ref_posit} c\nleft join {{{{ ref('{anchor.name}') }}}} p on p.\"{a}\" = c.\"{m}_{a}\"\n"
-                        f'where p."{a}" is null\ngroup by c."{m}_{a}"'
-                    ),
-                ]
-            ),
-        )
-        files[f"ic_{t.annex}.sql"] = view(
-            f"What breaks the keys of {t.annex}.",
-            "\nunion all\n".join(
-                [
-                    violation(
-                        t.annex,
-                        "duplicate primary key",
-                        json_key(f"{m}_ID", f"{m}_Positor", f"{m}_PositedAt"),
-                        ref_annex,
-                        f'"{m}_ID", "{m}_Positor", "{m}_PositedAt"',
-                    ),
-                    (
-                        f"select '{t.annex}', 'no row in {t.posit} for {m}_ID', "
-                        f"json_object('{m}_ID', c.\"{m}_ID\"), count(*)\n"
-                        f"from {ref_annex} c\nleft join {ref_posit} p on p.\"{m}_ID\" = c.\"{m}_ID\"\n"
-                        f'where p."{m}_ID" is null\ngroup by c."{m}_ID"'
-                    ),
-                ]
-            ),
-        )
-        files[f"ic_{t.name}.sql"] = view(
+        files |= history_checks(
+            t.name, m, t.posit, t.annex, f"{m}_{a}", t.name, [(anchor, f"{m}_{a}")],
             f"What {t.posit} and {t.annex} say together: positor 0 asserting more than one value "
             "for one identity and ChangedAt at its latest PositedAt (the model is decisive).",
-            (
-                f"select '{t.name}' as Construct, 'more than one assertion at a time' as Violation,\n"
-                f"    json_object('{m}_Positor', 0, '{m}_{a}', \"{m}_{a}\", '{m}_ChangedAt', \"{m}_ChangedAt\") "
-                "as ViolationKey,\n    count(*) as Occurrences\n"
-                f"from (\n    {{{{ anchor_latest({{'mnemonic': '{m}', 'name': '{t.name}'}}) }}}}\n)\n"
-                f'group by "{m}_{a}", "{m}_ChangedAt"\nhaving count(*) > 1'
-            ),
         )
     k = identifier
     files[f"ic_{anchor.key_view}.sql"] = view(
@@ -596,50 +618,11 @@ def tie_files(tie: Tie, identifier: Attribute) -> dict[str, str]:
         comment=f"The time-traveling perspective of {tie.name}, a table macro taking changingTimepoint and "
         "positingTimepoint (ADR-0033).",
     )
-    m, i, v = tie.name, tie.identity_column, tie.value_column
-    ref_posit, ref_annex = f"{{{{ ref('{tie.posit}') }}}}", f"{{{{ ref('{tie.annex}') }}}}"
-    files[f"ic_{tie.posit}.sql"] = view(
-        f"What breaks the keys of {tie.posit}.",
-        "\nunion all\n".join(
-            [violation(tie.posit, "duplicate primary key", json_key(f"{m}_ID"), ref_posit, f'"{m}_ID"'),
-             violation(tie.posit, "duplicate unique key", json_key(i, f"{m}_ChangedAt", v), ref_posit,
-                       f'"{i}", "{m}_ChangedAt", "{v}"')]
-            + [
-                (
-                    f"select '{tie.posit}', 'no row in {anchor.name} for {column}', "
-                    f"json_object('{column}', c.\"{column}\"), count(*)\n"
-                    f"from {ref_posit} c\nleft join {{{{ ref('{anchor.name}') }}}} p on p.\"{anchor.id}\" = c.\"{column}\"\n"
-                    f'where p."{anchor.id}" is null\ngroup by c."{column}"'
-                )
-                for anchor, column in ((tie.owner, i), (tie.other, v))
-            ]
-        ),
-    )
-    files[f"ic_{tie.annex}.sql"] = view(
-        f"What breaks the keys of {tie.annex}.",
-        "\nunion all\n".join(
-            [
-                violation(tie.annex, "duplicate primary key", json_key(f"{m}_ID", f"{m}_Positor", f"{m}_PositedAt"),
-                          ref_annex, f'"{m}_ID", "{m}_Positor", "{m}_PositedAt"'),
-                (
-                    f"select '{tie.annex}', 'no row in {tie.posit} for {m}_ID', "
-                    f"json_object('{m}_ID', c.\"{m}_ID\"), count(*)\n"
-                    f"from {ref_annex} c\nleft join {ref_posit} p on p.\"{m}_ID\" = c.\"{m}_ID\"\n"
-                    f'where p."{m}_ID" is null\ngroup by c."{m}_ID"'
-                ),
-            ]
-        ),
-    )
-    files[f"ic_{tie.name}.sql"] = view(
+    files |= history_checks(
+        tie.name, tie.name, tie.posit, tie.annex, tie.identity_column, tie.value_column,
+        [(tie.owner, tie.identity_column), (tie.other, tie.value_column)],
         f"The key of {tie.name}: positor 0 asserting more than one {tie.other.descriptor} for one "
         f"{tie.owner.descriptor} and ChangedAt at its latest PositedAt.",
-        (
-            f"select '{m}' as Construct, 'more than one assertion at a time' as Violation,\n"
-            f"    json_object('{m}_Positor', 0, '{i}', \"{i}\", '{m}_ChangedAt', \"{m}_ChangedAt\") as ViolationKey,\n"
-            "    count(*) as Occurrences\n"
-            f"from (\n    {{{{ anchor_latest({{'mnemonic': '{m}', 'name': '{m}'}}) }}}}\n)\n"
-            f'group by "{i}", "{m}_ChangedAt"\nhaving count(*) > 1'
-        ),
     )
     return files
 
@@ -691,7 +674,7 @@ def perspective(
     return "select\n" + ",\n".join(columns) + f"\nfrom {{{{ ref('{anchor.name}') }}}} p\n" + "\n".join(joins)
 
 
-def schema_json(schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list[Tie] = ()) -> str:
+def schema_json(schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list[Tie]) -> str:
     """The model as Anchor's jsonified XML: constructs keyed by mnemonic (CreateSchemaTracking)."""
     out_anchors = {}
     for anchor, attributes, identifier in anchors:
@@ -742,7 +725,7 @@ def schema_json(schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attri
     return json.dumps(document, ensure_ascii=False, sort_keys=False, separators=(",", ":"))
 
 
-def tracking_files(schema: dict, anchors, tied: list[Tie] = ()) -> dict[str, str]:
+def tracking_files(schema: dict, anchors, tied: list[Tie]) -> dict[str, str]:
     text = schema_json(schema, anchors, tied).replace("'", "''")
     files = {
         "_Schema.sql": model(
@@ -852,7 +835,7 @@ from {{ ref('_Schema') }} s, unnest(json_keys(s.schema->'schema'->'tie')) as t(n
     return files
 
 
-def schema_file(anchors, tied: list[Tie] = ()) -> str:
+def schema_file(anchors, tied: list[Tie]) -> str:
     models = []
     for anchor, attributes, identifier in anchors:
         models.append({"name": anchor.name, "description": anchor.description})
@@ -879,7 +862,7 @@ def schema_file(anchors, tied: list[Tie] = ()) -> str:
     return yaml.safe_dump({"version": 2, "models": models}, sort_keys=False, allow_unicode=True, width=100)
 
 
-def diagram(anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list[Tie] = ()) -> str:
+def diagram(anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list[Tie]) -> str:
     """Each anchor with its identity and its attributes, and each tie as a relationship named for it,
     many of its identifier role to one of the other; knots and load tables are left out."""
     return erd.diagram(
@@ -896,7 +879,7 @@ def diagram(anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list
 
 
 def packages(
-    schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list[Tie] = ()
+    schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list[Tie]
 ) -> dict[Path, dict[str, str]]:
     files: dict[str, str] = {}
     for anchor, attributes, identifier in anchors:

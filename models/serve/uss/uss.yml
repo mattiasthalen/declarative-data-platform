@@ -1,5 +1,29 @@
 version: 2
 models:
+- name: product
+  description: A product the business makes or buys, and may sell.
+  columns:
+  - name: _key__product
+    description: The identity and the version's valid-from, as identity|valid_from.
+    data_tests:
+    - not_null
+    - unique
+    - ghost_rows
+  - name: product__product_number
+    description: The number that names one product across the business; its natural key.
+  - name: product__name
+    description: The product's name.
+  - name: product__product_line
+    description: The product line, R road, M mountain, T touring or S standard; empty when the source
+      has none.
+  - name: product__color
+    description: The product's colour.
+  - name: product__sell_start
+    description: The first day the product is on sale.
+  - name: product__sell_end
+    description: The last day the product is on sale.
+  - name: product__discontinued
+    description: The day the product was discontinued; it is no longer on sale from that day.
 - name: product_subcategory
   description: A subcategory products are grouped in, such as Mountain Bikes.
   columns:
@@ -26,10 +50,11 @@ models:
   - name: _key__product_subcategory
     data_tests:
     - not_null:
-        config: &id001
+        config:
           severity: warn
     - relationships:
         arguments:
           to: ref('product_subcategory')
           field: _key__product_subcategory
-        config: *id001
+        config:
+          severity: warn

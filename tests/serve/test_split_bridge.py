@@ -6,11 +6,13 @@ The story lake is ``tie_story``'s; every test reads the snapshots its builds lef
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 import pytest
 import tie_story
-from harness import GHOSTS, Snapshot, dimension_column, pr_id, q
+import yaml
+from harness import GHOSTS, REPO, Snapshot, dimension_column, pr_id, q
 from tie_story import (
     D0,
     FIRST,
@@ -266,3 +268,45 @@ def test_incremental_equals_full_on_story_lake(story):
     tied = {str(pr_id(s4, "SN-0005"))}
     changed = {r[0] for r in set(split_bridge(s3)) ^ set(split_bridge(s4))}
     assert changed == tied, f"the subcategories-only build changed the bridge rows of {changed}, expected {tied}"
+
+
+# --------------------------------------------------------------------------- review ledger #1, #2
+# These read the committed generated output; test_generate_check holds it to what the generator writes.
+
+SERVE = REPO / "models" / "serve"
+CONFIG = re.compile(r"\{\{\s*config\((.*?)\)\s*\}\}", re.S)
+
+
+def test_tied_dimension_keeps_its_uss_entry():
+    """Ledger #1: product, whose staged bridge follows a tie, keeps its own entry in uss.yml: not_null,
+    unique and ghost_rows on _key__product, and a description for each of its attribute columns."""
+    models = {m["name"]: m for m in yaml.safe_load((SERVE / "uss" / "uss.yml").read_text())["models"]}
+    assert "product" in models, f"uss.yml has no entry for product: {sorted(models)}"
+    columns = {c["name"]: c for c in models["product"].get("columns") or []}
+    key = columns.get("_key__product")
+    assert key is not None, f"uss.yml's product entry has no _key__product: {sorted(columns)}"
+    tests = {t if isinstance(t, str) else next(iter(t)) for t in key.get("data_tests") or []}
+    assert {"not_null", "unique", "ghost_rows"} <= tests, f"_key__product carries only {sorted(tests)}"
+
+    selected = set(re.findall(r"\bas (product__\w+)", (SERVE / "uss" / "product.sql").read_text()))
+    attributes = selected - {"product__valid_from", "product__valid_to"}
+    assert len(attributes) >= 7, f"product.sql selects too few attribute columns: {sorted(selected)}"
+    undescribed = sorted(c for c in attributes if not str((columns.get(c) or {}).get("description") or "").strip())
+    assert undescribed == [], f"uss.yml's product entry describes none of {undescribed}"
+
+
+def test_serve_incremental_models_fail_on_schema_change():
+    """Ledger #2: every incremental serve model, staged bridges and dimensions, is configured with
+    on_schema_change='fail', so a column change fails the build instead of being ignored."""
+    incremental = {}
+    for path in sorted(SERVE.rglob("*.sql")):
+        match = CONFIG.search(path.read_text())
+        if match and re.search(r"materialized\s*=\s*['\"]incremental['\"]", match.group(1)):
+            incremental[path.stem] = match.group(1)
+    expected = {"product", "product_subcategory", "bridge__product", "bridge__product_subcategory"}
+    assert expected <= set(incremental), f"incremental serve models: {sorted(incremental)}"
+    lax = sorted(
+        name for name, args in incremental.items()
+        if not re.search(r"on_schema_change\s*=\s*['\"]fail['\"]", args)
+    )
+    assert lax == [], f"incremental serve models without on_schema_change='fail': {lax}"

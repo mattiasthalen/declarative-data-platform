@@ -8,10 +8,10 @@ ADR-0011 gives each entity a staged bridge holding its own PIT keys, and inherit
 
 ## Decision
 
-A staged bridge follows every tie in which its anchor is the only identifier role, one step, to the other anchor's staged bridge, and inherits every key that stage carries. Its rows are its own versions intersected with the tie's versions and with the rows of the reached stage: one row per interval over which none of them changes, with `[_valid_from, _valid_to)` and the PIT key of every version valid for the whole interval. Where the tie has no version, the row stays and the inherited keys are null, read as `[not available]`. A product's rows are rebuilt when its attributes or ties change and when a stage it reaches changes.
+A staged bridge follows every tie in which its anchor is the only identifier role, one step, to the other anchor's staged bridge, and inherits every key that stage carries. Its rows are its own versions intersected with the tie's versions and with the rows of the reached stage: one row per interval over which none of them changes, with `[_valid_from, _valid_to)` and the PIT key of every version valid for the whole interval. Where the tie has no version, the row stays and the stage writes `[not available]` in the inherited keys, since the bridge reads a null as not applicable. A product's rows are rebuilt when its attributes or ties change and when a stage it reaches changes.
 
 Rejected: one bridge row per tie version holding only the tie's other identity, leaving the version to the query, which redoes the overlap join on every question and fans out when the dimension changes inside a tie version. Rejected: following ties where several roles are identifiers; a many-to-many tie gets its own stage (#7).
 
 ## Consequences
 
-For any instant, each identity has exactly one row in its stage. Every dimension change multiplies the rows of each entity that reaches it, bounded by the versions involved. One-to-one ties (#8) and self-ties (#10) extend which ties are followed; neither is followed yet.
+For any instant, each identity has exactly one row in its stage. Every dimension change multiplies the rows of each entity that reaches it, bounded by the versions involved. One-to-one ties (#8) and self-ties (#10) extend which ties are followed; neither is followed yet. A tie adds columns to an incremental stage, so serve's incremental models fail on a change of columns rather than keep their old shape, and a target built before needs one `dbt build --full-refresh`, which rebuilds only serve (ADR-0006).

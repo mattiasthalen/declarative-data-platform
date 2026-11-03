@@ -52,13 +52,15 @@ def entity_literal(anchor, attributes, model) -> str:
     )
 
 
-def keys(anchor, model) -> list[str]:
+def keys(anchor, model, path=()) -> list[str]:
     """The entities whose PIT keys ``anchor``'s staged bridge carries: its own, then each followed tie's
-    reached stage's, in order. A key reached twice is refused."""
+    reached stage's, in order. A key reached twice, or ties that lead back to ``anchor``, are refused."""
     anchors, tied = model
+    if anchor.mnemonic in path:
+        raise integrate.ModelError(f"the ties followed from {anchor.name} lead back to it; a cycle of ties is not supported")
     found = [snake(anchor.descriptor)]
     for t in followed(anchor, tied):
-        for key in keys(anchors[t.other.mnemonic][0], model):
+        for key in keys(anchors[t.other.mnemonic][0], model, (*path, anchor.mnemonic)):
             if key in found:
                 raise integrate.ModelError(f"{anchor.name} reaches {key} twice; only one path to an entity is supported")
             found.append(key)
@@ -82,7 +84,7 @@ def header(anchor, attributes, model) -> str:
     e = entity_literal(anchor, attributes, model)
     depends = "".join(f"-- depends_on: {{{{ ref('{name}') }}}}\n" for name in reached_models(anchor, model))
     return (
-        f"{{{{ config(materialized='incremental', pre_hook=\"{{{{ uss_forget({e}) }}}}\") }}}}\n"
+        f"{{{{ config(materialized='incremental', on_schema_change='fail', pre_hook=\"{{{{ uss_forget({e}) }}}}\") }}}}\n"
         + depends
         + f"{{% set e = {e} %}}\n"
     )
@@ -205,11 +207,13 @@ def bridge_key_tests(entity: str, *, warn: bool) -> list:
     relationship = {"relationships": {"arguments": {"to": f"ref('{entity}')", "field": f"_key__{entity}"}}}
     if not warn:
         return ["not_null", relationship]
-    config = {"config": {"severity": "warn"}}
-    return [{"not_null": config}, {"relationships": relationship["relationships"] | config}]
+    return [
+        {"not_null": {"config": {"severity": "warn"}}},
+        {"relationships": relationship["relationships"] | {"config": {"severity": "warn"}}},
+    ]
 
 
-def packages(anchors, tied=()) -> dict[Path, dict[str, str]]:
+def packages(anchors, tied) -> dict[Path, dict[str, str]]:
     staging: dict[str, str] = {}
     uss: dict[str, str] = {}
     models_staging, models_uss = [], []
@@ -219,23 +223,20 @@ def packages(anchors, tied=()) -> dict[Path, dict[str, str]]:
     for anchor, attributes, _ in anchors:
         entity = snake(anchor.descriptor)
         entities.append(entity)
-        staging[f"bridge__{entity}.sql"] = staged_bridge(anchor, attributes, model)
-        uss[f"{entity}.sql"] = dimension(anchor, attributes, model)
         reached = keys(anchor, model)[1:]
         inherited |= set(reached)
-        if reached:
-            models_staging.append(
-                {
-                    "name": f"bridge__{entity}",
-                    "description": f"The staged bridge of {entity}: its own keys and those it reaches over its "
-                    "to-one ties, one row per interval over which none of them changes.",
-                    "data_tests": [{"unique": {"column_name": f"_key__{entity} || '@' || cast(_valid_from as varchar)"}}],
-                    "columns": [{"name": f"_key__{e}", "data_tests": ["not_null"]} for e in [entity, *reached]],
-                }
-            )
-            continue
+        staging[f"bridge__{entity}.sql"] = staged_bridge(anchor, attributes, model)
+        uss[f"{entity}.sql"] = dimension(anchor, attributes, model)
         models_staging.append(
             {
+                "name": f"bridge__{entity}",
+                "description": f"The staged bridge of {entity}: its own keys and those it reaches over its "
+                "to-one ties, one row per interval over which none of them changes.",
+                "data_tests": [{"unique": {"column_name": f"_key__{entity} || '@' || cast(_valid_from as varchar)"}}],
+                "columns": [{"name": f"_key__{e}", "data_tests": ["not_null"]} for e in [entity, *reached]],
+            }
+            if reached
+            else {
                 "name": f"bridge__{entity}",
                 "description": f"The staged bridge of {entity}: its own keys, one row per version.",
                 "columns": [{"name": f"_key__{entity}", "data_tests": ["not_null", "unique"]}],

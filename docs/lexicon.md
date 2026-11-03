@@ -36,7 +36,7 @@ The words someone needs defined to talk about using or developing the platform. 
 
 **PIT key** — The key of one dimension version, its identity and valid-from, as a row of *the bridge* carries it: the version valid for the whole of that row's interval. Distinct from the identity, which names the thing across all its versions. See [ADR-0038](adr/0038-split-a-staged-bridge-at-every-change-of-what-it-reaches-over-to-one-ties.md).
 
-**not available** — A ghost member for a relationship that applies but has no value: a null inside a *staged bridge*. Distinct from *not applicable*.
+**not available** — A ghost member for a relationship that applies but has no value, written as `[not available]` by a *staged bridge*. Distinct from *not applicable*.
 
 **not applicable** — A ghost member for a relationship that does not apply to a row: a null created when *the bridge* unions stages that lack that key. Distinct from *not available*.
 
