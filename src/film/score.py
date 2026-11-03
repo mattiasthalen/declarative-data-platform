@@ -147,10 +147,12 @@ def _resonant(signal: np.ndarray, start: float, end: float, q: float, tau: float
 
 
 def _pad(n: int, duration: float) -> np.ndarray:
-    """Detuned saws a chord a bar, swelling in on the first and overlapping into the next."""
+    """Detuned saws a chord a bar, swelling in on the first and overlapping into the next; the
+    lockup rests on Am so the film ends resolved."""
     out = np.zeros(n)
+    lockup = next(b["start"] for b in timeline.beats() if b["chapter"] == "lockup")
     for i, start in enumerate(np.arange(0, duration, BAR)):
-        chord = CHORDS[i % 4]
+        chord = CHORDS[0 if start >= lockup else i % 4]
         notes = chord + [chord[0] + 12]
         length = BAR + 0.6
         x = np.arange(int(length * SR)) / SR
@@ -232,7 +234,8 @@ def _master(mix: np.ndarray, duration: float, rng) -> bytes:
     n = len(mix)
     t = np.arange(n) / SR
     fade = np.clip(t / 0.25, 0, 1) * np.clip((duration - t) / 2.5, 0, 1)
-    mix = np.stack([_lowpass(mix[:, c], 11000) for c in range(2)], axis=1)
+    # The arpeggio's narrow pulse carries DC; the highpass takes it out before the saturation.
+    mix = np.stack([_highpass(_lowpass(mix[:, c], 11000), 20) for c in range(2)], axis=1)
     mix = np.tanh(mix * fade[:, None] * 1.1) / 1.1
     peak = float(np.max(np.abs(mix))) or 1.0
     mix *= 10 ** (-1 / 20) / peak

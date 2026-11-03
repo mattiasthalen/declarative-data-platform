@@ -815,7 +815,7 @@ film = [
     { name = "kokoro-onnx", specifier = "==0.6.1" },
     { name = "numpy", specifier = ">=2" },
     { name = "playwright", specifier = ">=1.50,<1.64" },
-    { name = "scipy", specifier = ">=1.14,<2" },
+    { name = "scipy", specifier = ">=1.14.1,<2" },
 ]
 ingest = [{ name = "dlt", extras = ["parquet"], specifier = ">=1.32,<1.33" }]
 orchestrate = [{ name = "prefect", specifier = ">=3.9,<3.10" }]
