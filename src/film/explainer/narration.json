@@ -3,7 +3,7 @@
   "speed": 1.0,
   "lines": [
     {"text": "Most data platforms are written by hand, one layer at a time, and each layer drifts from the last.", "cue": 0.6},
-    {"text": "Here, you declare what you have, and generators write the rest.", "cue": 6.0},
+    {"text": "Here, you declare what you have, and generators write the rest.", "cue": 6.9},
     {"text": "Ingest is where data arrives. A short file declares what a source serves.", "cue": 10.6},
     {"text": "Ingest lands every load in the lake, as it came, so nothing is ever lost.", "cue": 16.4},
     {"text": "Each resource gets its own pipeline, so one failure never halts the rest.", "cue": 24.4},
