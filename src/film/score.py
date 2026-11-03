@@ -33,6 +33,8 @@ ARPEGGIOS = {
     "C9": [67, 72, 74, 76, 79, 76, 74, 72],
     "G6": [67, 71, 74, 76, 79, 76, 74, 71],
 }
+# A bell's partials: frequency ratio to (amplitude, decay in seconds).
+BELL_PARTIALS = {1: (1, 1.3), 2: (0.45, 0.8), 3.01: (0.25, 0.5), 4.2: (0.12, 0.3)}
 PROGRESSION = ["Am9", "F9", "C9", "G6"]
 BAR = 2.0  # 120 BPM in 4/4: every chapter starts on a bar
 CHORD_BARS = 2
@@ -183,7 +185,7 @@ def _bass(n: int, at: float, m: int, seconds: float):
 def _bell(n: int, at: float, m: int):
     a, b, x = _hit(n, at, 2.4)
     f = _mtof(m)
-    s = sum(np.sin(2 * np.pi * f * h * x) * amp * np.exp(-x / d) for h, amp, d in ((1, 1, 1.3), (2, 0.45, 0.8), (3.01, 0.25, 0.5), (4.2, 0.12, 0.3)))
+    s = sum(np.sin(2 * np.pi * f * h * x) * amp * np.exp(-x / d) for h, (amp, d) in BELL_PARTIALS.items())
     s *= np.clip(x / 0.003, 0, 1) * 0.05
     return a, np.outer(s, _pan(0.3))
 

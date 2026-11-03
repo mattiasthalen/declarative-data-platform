@@ -1,0 +1,75 @@
+/* Nocturne, the project's design system: dark only, one rationed accent, layers gaining light. */
+:root {
+  --bg: #161826;
+  --surface: #232532;
+  --text: #e9e9ed;
+  --muted: #e9e9ed8c;
+  --label: #e9e9edb3;
+  --divider: #e9e9ed29;
+  --accent: #9184d9;
+  --claimed: #9184d942;
+  --raw: #9397ab;
+  --contract: #9690c9;
+  --anchor: #9184d9;
+  --serve: #b5abfc;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+body { font-family: Inter, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+#ground { position: absolute; inset: 0; background: linear-gradient(158deg, #1c1f30, #0e0f18); }
+#glow { position: absolute; left: 960px; top: 520px; width: 1500px; height: 1100px; margin: -550px 0 0 -750px;
+  background: radial-gradient(closest-side, #9184d92e, #9184d900); }
+.scene { position: absolute; inset: 0; display: none; }
+.layer { position: absolute; will-change: transform, opacity; }
+
+.kicker { font-size: 17px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); font-weight: 500; }
+.title { font-size: 64px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.12; }
+.sub { font-size: 26px; color: var(--label); line-height: 1.4; }
+.header { left: 120px; top: 64px; width: 1300px; }
+.header .title { margin-top: 10px; }
+.header .sub { margin-top: 10px; }
+
+.card { left: 436px; top: 268px; width: 1048px; max-height: 620px; background: var(--surface); border: 1px solid var(--divider);
+  border-radius: 8px; box-shadow: 0 1px 0 #ffffff0a inset, 0 24px 60px #0000006b; overflow: hidden; }
+.card .path { height: 44px; padding: 0 20px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid var(--divider);
+  font-family: 'JetBrains Mono', monospace; font-size: 15px; color: var(--label); }
+.card .path .from { color: var(--muted); }
+.card .path .dot { width: 9px; height: 9px; border-radius: 50%; }
+.card pre { padding: 14px 20px; font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 19.5px; color: var(--text);
+  font-variant-numeric: tabular-nums; white-space: pre; }
+.card pre .ln { display: block; }
+.card pre .no { display: inline-block; width: 34px; color: #e9e9ed40; user-select: none; }
+.k { color: #b5afe8; }
+.c { color: #e9e9ed66; }
+.s { color: var(--text); }
+.p { color: #e9e9ed80; }
+
+.side { top: 268px; width: 436px; height: 604px; }
+.side.left { left: 0; }
+.side.right { left: 1484px; }
+.side svg { position: absolute; left: 48px; top: 112px; width: 340px; height: 340px; overflow: visible; }
+.side .label { position: absolute; left: 0; right: 0; top: 486px; text-align: center; font-size: 15px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--label); }
+
+.zoom { left: 120px; top: 268px; width: 1680px; height: 604px; }
+.zoom svg { position: absolute; inset: 0; width: 1680px; height: 604px; overflow: visible; }
+.zoom .label { position: absolute; left: 0; top: -2px; font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); }
+.tilename { font-family: 'JetBrains Mono', monospace; font-size: 14px; fill: var(--label); }
+.tilename .of { fill: var(--muted); font-size: 12px; }
+
+.hero-line { left: 120px; width: 1680px; font-size: 76px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.12; }
+.motif { left: 1290px; top: 300px; }
+
+.wordmark { font-family: Spectral, serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+#lockup .wordmark { left: 0; right: 0; top: 430px; text-align: center; font-size: 84px; }
+#lockup .tagline { left: 0; right: 0; top: 560px; text-align: center; font-size: 30px; color: var(--label); }
+#lockup .url { left: 0; right: 0; top: 640px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 22px; color: var(--accent); }
+
+#steps { position: absolute; right: 120px; top: 76px; display: flex; gap: 26px; }
+#steps .step { font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 9px; }
+#steps .step i { width: 9px; height: 9px; border-radius: 2px; border: 1.4px solid currentColor; }
+
+#caption { position: absolute; left: 260px; right: 260px; bottom: 54px; display: flex; justify-content: center; }
+#caption span { max-width: 1400px; padding: 14px 26px; border-radius: 8px; background: #0e0f18c7; font-size: 32px; line-height: 1.35;
+  text-align: center; color: var(--text); }
