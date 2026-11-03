@@ -35,5 +35,6 @@ Nygard's format: Context, Decision, Consequences, with a Status. One decision pe
 | [0029](0029-ship-the-readmes-artwork-as-svg-committed-under-docs.md) | Ship the README's artwork as SVG committed under docs/ | Accepted (2026-11-01); partly superseded by ADR-0032 |
 | [0030](0030-expose-the-point-in-time-perspective-as-a-duckdb-table-macro.md) | Expose the point-in-time perspective as a DuckDB table macro | Accepted (2026-11-01) |
 | [0032](0032-keep-the-readmes-artwork-in-assets-at-the-repo-root.md) | Keep the README's artwork in assets/ at the repo root | Accepted (2026-11-02) |
-| [0034](0034-render-the-explainer-in-ci-and-publish-it-on-a-rolling-release.md) | Render the explainer in CI and publish it on a rolling release | Accepted (2026-11-02) |
+| [0034](0034-render-the-explainer-in-ci-and-publish-it-on-a-rolling-release.md) | Render the explainer in CI and publish it on a rolling release | Accepted (2026-11-02); partly superseded by ADR-0040 |
 | [0035](0035-synthesize-the-explainers-narration-locally-with-kokoro.md) | Synthesize the explainer's narration locally with Kokoro-82M | Accepted (2026-11-02) |
+| [0040](0040-publish-the-explainer-on-github-pages.md) | Publish the explainer on GitHub Pages | Accepted (2026-11-03) |

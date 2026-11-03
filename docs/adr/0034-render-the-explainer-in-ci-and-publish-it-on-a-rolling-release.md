@@ -1,6 +1,6 @@
 # ADR-0034 — Render the explainer in CI and publish it on a rolling release
 
-**Status:** Accepted (2026-11-02)
+**Status:** Accepted (2026-11-02); partly superseded by [ADR-0040](0040-publish-the-explainer-on-github-pages.md) (where the film is published, 2026-11-03)
 
 ## Context
 

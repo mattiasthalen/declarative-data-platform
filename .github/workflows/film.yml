@@ -1,5 +1,5 @@
-# Renders the README's explainer on main and replaces it on the rolling `explainer` release
-# (ADR-0034). A failed render leaves the previous asset up.
+# Renders the README's explainer and, from main, deploys it to GitHub Pages (ADR-0034, ADR-0040).
+# The render holds no write token; a failed render or deploy leaves the previous film up.
 name: film
 
 on:
@@ -15,12 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  # A newer push to main renders a newer film: the older render has nothing left to publish.
-  group: film
-  cancel-in-progress: true
+  contents: read
 
 env:
   UV_LOCKED: "1"
@@ -30,6 +25,10 @@ jobs:
   render:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    concurrency:
+      # A newer push renders a newer film: the older render on the same ref has nothing left to deploy.
+      group: film-render-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -40,20 +39,45 @@ jobs:
           download-from-astral-mirror: false
           python-version: "3.13"
           enable-cache: true
-      # The Kokoro files' pinned checksums live in voice.py, so a new pin is a new key.
-      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      # voice.py pins the Kokoro files' checksums, so any edit to it is a new key. Saved as soon as
+      # the files verify, so a render that fails later keeps them for the next run.
+      - id: kokoro
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .models
           key: kokoro-${{ hashFiles('src/film/voice.py') }}
       - run: uv run task film:models
+      - if: steps.kokoro.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .models
+          key: kokoro-${{ hashFiles('src/film/voice.py') }}
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: uv run playwright install --with-deps chromium
       - run: uv run task film
-      - name: Publish on the explainer release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh release view explainer >/dev/null 2>&1 || gh release create explainer --title "The explainer" --latest=false \
-            --notes "The README's explainer film, rendered from main by the film workflow and replaced on every render (ADR-0034)."
-          gh release upload explainer out/film/declarative-data-platform-explainer.mp4 --clobber
+      - run: |
+          mkdir -p out/film/site
+          cp src/film/site/index.html out/film/declarative-data-platform-explainer.mp4 out/film/site/
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: out/film/site
+
+  deploy:
+    # Only main's film is the README's; a render dispatched on another branch stops at its artifact.
+    if: github.ref == 'refs/heads/main'
+    needs: render
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      # A deploy that has started finishes; Pages switches to the new site only once it is whole.
+      group: film-deploy
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

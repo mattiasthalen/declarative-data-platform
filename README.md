@@ -1,6 +1,6 @@
 <p align="center"><img src="assets/hero.svg" width="100%" alt="Declarative Data Platform: raw data, a handful of declarations, a star schema."></p>
 
-<p align="center"><a href="https://github.com/mattiasthalen/declarative-data-platform/releases/download/explainer/declarative-data-platform-explainer.mp4">Watch the two-minute explainer, with sound</a></p>
+<p align="center"><a href="https://mattiasthalen.github.io/declarative-data-platform/">Watch the two-minute explainer, with sound</a></p>
 
 Declarations in, structure out. Today serve generates a Unified Star Schema.
 A source is declared once: what ingest lands
