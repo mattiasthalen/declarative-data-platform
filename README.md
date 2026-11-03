@@ -55,6 +55,12 @@ erDiagram
     date PR_SEN_Product_SellEnd "historized"
     date PR_DIS_Product_Discontinued "historized"
   }
+  PS_ProductSubcategory {
+    int PS_ID PK
+    int PS_SID_ProductSubcategory_SourceId "historized"
+    varchar(50) PS_NAM_ProductSubcategory_Name "historized"
+  }
+  PR_Product }o--|| PS_ProductSubcategory : "PR_in_PS_contains"
 ```
 <!-- erd:integrate end -->
 
@@ -77,13 +83,22 @@ erDiagram
     date product__sell_end
     date product__discontinued
   }
+  product_subcategory {
+    varchar _key__product_subcategory PK
+    timestamp product_subcategory__valid_from
+    timestamp product_subcategory__valid_to
+    int product_subcategory__source_id
+    varchar(50) product_subcategory__name
+  }
   _bridge {
     varchar stage
     varchar _key__product FK
+    varchar _key__product_subcategory FK
     timestamp _valid_from
     timestamp _valid_to
   }
   _bridge }o--|| product : "_key__product"
+  _bridge }o--|| product_subcategory : "_key__product_subcategory"
 ```
 <!-- erd:serve end -->
 

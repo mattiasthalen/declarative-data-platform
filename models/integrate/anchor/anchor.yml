@@ -17,6 +17,32 @@ models:
   description: The last day the product is on sale.
 - name: PR_DIS_Product_Discontinued
   description: The day the product was discontinued; it is no longer on sale from that day.
+- name: PS_ProductSubcategory
+  description: A subcategory products are grouped in, such as Mountain Bikes.
+- name: PS_SID_ProductSubcategory_SourceId
+  description: The subcategory's id in the source, which products name it by; its natural key (ADR-0037).
+- name: PS_NAM_ProductSubcategory_Name
+  description: The subcategory's name.
+- name: PR_in_PS_contains
+  description: The subcategory a product is in; one at a time, and it can change (ADR-0036).
+- name: ic_PR_in_PS_contains_Posit
+  description: What breaks the keys of PR_in_PS_contains; a row warns.
+  data_tests:
+  - empty:
+      config:
+        severity: warn
+- name: ic_PR_in_PS_contains_Annex
+  description: What breaks the keys of PR_in_PS_contains; a row warns.
+  data_tests:
+  - empty:
+      config:
+        severity: warn
+- name: ic_PR_in_PS_contains
+  description: What breaks the keys of PR_in_PS_contains; a row warns.
+  data_tests:
+  - empty:
+      config:
+        severity: warn
 - name: IntegrityViolations
   description: Every integrity check of the model; empty when nothing is wrong.
   data_tests:

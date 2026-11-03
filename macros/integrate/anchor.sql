@@ -60,7 +60,7 @@ known_keys as (
     {%- if posit is not none and annex is not none %}
     {{ anchor_key_select(a, posit, annex) }}
     {%- else %}
-    select cast(null as {{ a.identity_type }}) as "{{ id }}", cast(null as varchar) as "{{ a.identifier_value }}"
+    select cast(null as {{ a.identity_type }}) as "{{ id }}", cast(null as {{ a.key_type }}) as "{{ a.identifier_value }}"
     where false
     {%- endif %}
 ),
@@ -113,8 +113,9 @@ where k.claim > (select count(*) from unclaimed_identities)
 {%- endmacro %}
 
 
-{#- What the pending loads assert and retract for one attribute: the CTEs ending in `actions`
-    (identity, ChangedAt, value, reliability, PositedAt). The posit and annex models both call
+{#- What the pending loads assert and retract for one attribute, or for a tie loaded as an
+    attribute of its identifier role, its value the other role's identity (ADR-0036): the CTEs ending
+    in `actions` (identity, ChangedAt, value, reliability, PositedAt). The posit and annex models both call
     it; it reads only the annex as it stood before this build, so both see the same actions. -#}
 {% macro anchor_actions(a) -%}
     {%- set m = a.mnemonic -%}
@@ -127,6 +128,19 @@ where k.claim > (select count(*) from unclaimed_identities)
     select "{{ a.identifier_value }}" as natural_key, "{{ a.anchor_mnemonic }}_ID" as id
     from {{ ref(a.key_view) }}
 ),{% endif %}
+{%- if a.reference_key is defined %}
+
+-- For a tie: the other anchor's identity of every key, and when the key was first known.
+known_references as (
+    select
+        "{{ a.reference_key }}" as natural_key,
+        "{{ a.reference_id }}" as id,
+        min("{{ a.reference_key_mnemonic }}_PositedAt") as known_at
+    from {{ ref(a.reference_key) }}
+    where "{{ a.reference_key_mnemonic }}_Positor" = 0 and "{{ a.reference_key_mnemonic }}_Reliable" = 1
+    group by all
+),
+{%- endif %}
 
 -- The rows of every load at or after the newest PositedAt this attribute holds, less those that
 -- repeat the key's row in the load before: an unchanged load adds no step to the recursion,
@@ -149,14 +163,29 @@ source_rows as (
             from (
                 select
                     s."{{ a.key_column }}" as natural_key,
+                    {%- if a.reference_key is defined %}
+                    r.id as value,
+                    {%- else %}
                     cast(s."{{ a.column }}" as {{ a.value_type }}) as value,
+                    {%- endif %}
                     cast(s."{{ a.changed_at }}" as {{ a.time_type }}) as changed_at,
                     s._dlt__extracted_at as positing_at,
                     cast(s._dlt__load_id as decimal(38, 9)) as load_number,
                     list_contains(s._contract__cast_failed, '{{ a.column }}') as cast_failed
                 from {{ ref(a.source) }} s
+                {%- if a.reference_key is defined %}
+                left join known_references r
+                  on r.natural_key = cast(s."{{ a.column }}" as {{ a.reference_key_type }})
+                 and r.known_at <= s._dlt__extracted_at
+                {%- endif %}
                 where s."{{ a.key_column }}" is not null
                   and s."{{ a.changed_at }}" is not null
+                {%- if a.reference_key is defined %}
+                  -- a reference to a key not known by the row's PositedAt is skipped (ADR-0037)
+                  and (s."{{ a.column }}" is null
+                       or list_contains(s._contract__cast_failed, '{{ a.column }}')
+                       or r.id is not null)
+                {%- endif %}
             )
         )
         window by_load as (partition by natural_key order by positing_at, load_number, changed_at)
@@ -207,14 +236,14 @@ checked as (
 held as (
     {%- if held %}
     select
-        p."{{ m }}_{{ a.anchor_mnemonic }}_ID" as id,
+        p."{{ a.identity_column }}" as id,
         p."{{ m }}_ChangedAt" as changed_at,
-        p."{{ a.name }}" as value,
+        p."{{ a.value_column }}" as value,
         arg_max(x."{{ m }}_Reliability", x."{{ m }}_PositedAt") as reliability
     from {{ posit }} p
     join {{ annex }} x on x."{{ m }}_ID" = p."{{ m }}_ID"
     where x."{{ m }}_Positor" = 0
-      and p."{{ m }}_{{ a.anchor_mnemonic }}_ID" in (select id from checked)
+      and p."{{ a.identity_column }}" in (select id from checked)
     group by all
     {%- else %}
     select
@@ -326,9 +355,9 @@ new_posits as (
     {%- if is_incremental() %}
       and not exists (
         select 1 from {{ this }} p
-        where p."{{ m }}_{{ a.anchor_mnemonic }}_ID" = actions.id
+        where p."{{ a.identity_column }}" = actions.id
           and p."{{ m }}_ChangedAt" = actions.changed_at
-          and p."{{ a.name }}" = actions.value
+          and p."{{ a.value_column }}" = actions.value
       )
     {%- endif %}
 )
@@ -338,8 +367,8 @@ select
         {%- if is_incremental() %} (select coalesce(max("{{ m }}_ID"), 0) from {{ this }}){% else %} 0{% endif %}
         + row_number() over (order by id, changed_at, value) as {{ a.identity_type }}
     ) as "{{ m }}_ID",
-    cast(id as {{ a.identity_type }}) as "{{ m }}_{{ a.anchor_mnemonic }}_ID",
-    cast(value as {{ a.value_type }}) as "{{ a.name }}",
+    cast(id as {{ a.identity_type }}) as "{{ a.identity_column }}",
+    cast(value as {{ a.value_type }}) as "{{ a.value_column }}",
     cast(changed_at as {{ a.time_type }}) as "{{ m }}_ChangedAt"
 from new_posits
 {%- endmacro %}
@@ -358,9 +387,9 @@ select
     cast({{ anchor_batch() }} as integer) as "Metadata_{{ m }}"
 from actions
 join {{ ref(a.posit) }} p
-  on p."{{ m }}_{{ a.anchor_mnemonic }}_ID" = actions.id
+  on p."{{ a.identity_column }}" = actions.id
  and p."{{ m }}_ChangedAt" = actions.changed_at
- and p."{{ a.name }}" = actions.value
+ and p."{{ a.value_column }}" = actions.value
 {%- endmacro %}
 
 
@@ -374,8 +403,8 @@ select
     x."{{ m }}_Positor",
     x."{{ m }}_Reliability",
     cast(x."{{ m }}_Reliability" >= 1 as tinyint) as "{{ m }}_Reliable",
-    p."{{ m }}_{{ a.anchor_mnemonic }}_ID",
-    p."{{ a.name }}",
+    p."{{ a.identity_column }}",
+    p."{{ a.value_column }}",
     p."{{ m }}_ChangedAt"
 from {{ ref(a.posit) }} p
 join {{ ref(a.annex) }} x on x."{{ m }}_ID" = p."{{ m }}_ID"

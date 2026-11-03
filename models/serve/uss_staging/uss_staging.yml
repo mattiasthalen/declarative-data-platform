@@ -7,3 +7,10 @@ models:
     data_tests:
     - not_null
     - unique
+- name: bridge__product_subcategory
+  description: 'The staged bridge of product_subcategory: its own keys, one row per version.'
+  columns:
+  - name: _key__product_subcategory
+    data_tests:
+    - not_null
+    - unique
