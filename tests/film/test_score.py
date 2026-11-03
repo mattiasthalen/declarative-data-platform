@@ -1,10 +1,12 @@
-"""The explainer's score is deterministic and ducks under the narration (story #39: AC9).
+"""The explainer's score is deterministic and ducks under the narration (story #39: AC9), and
+plays at 96 BPM with every chapter starting on a bar (story #49: AC3).
 
 ``film.score.render(duration, cues)`` returns the score as a 48 kHz stereo 16-bit WAV, ducked
 inside each ``(start, end)`` cue. The loudness is compared away from the ducking's ramps and the
 score's own fade in and out.
 
-- ``-k film_score``: AC9.
+- ``-k film_score``: AC9 (#39), AC4 (#49).
+- ``-k film_score_bars``: AC3 (#49). ``film.score.BAR`` is the length of one bar in seconds.
 """
 
 from __future__ import annotations
@@ -13,13 +15,16 @@ import io
 import math
 import wave
 
-from film import score
+from film import score, timeline
 
 DURATION = 40.0
 CUES = [(12.0, 20.0)]
 # Inside the cue, and on both sides of it, a second clear of each edge.
 INSIDE = (13.0, 19.0)
 OUTSIDE = ((5.0, 11.0), (21.0, 27.0))
+# [4]: 96 BPM in 4/4.
+BPM = 96
+TOLERANCE = 1e-9
 
 
 def samples(wav: bytes):
@@ -56,3 +61,21 @@ def test_film_score():
     assert outside > 0, "the score is silent outside the cue"
     ducked = 20 * math.log10(outside / inside) if inside > 0 else math.inf
     assert ducked >= 6, f"the score is ducked {ducked:.1f} dB under the cue, expected at least 6"
+
+
+def test_film_score_bars():
+    """AC3 (#49): the score's bar is 4 beats at 96 BPM, and every chapter's start in
+    ``timeline.beats()`` is a whole number of bars."""
+    expected = 4 * 60 / BPM
+    assert abs(score.BAR - expected) <= TOLERANCE, f"score.BAR is {score.BAR} s, expected {expected} s (4/4 at {BPM} BPM)"
+
+    starts: dict[str, float] = {}
+    for beat in timeline.beats():
+        starts.setdefault(beat["chapter"], beat["start"])
+    assert starts, "timeline.beats() gave no chapters"
+    off = []
+    for chapter, start in starts.items():
+        bars = start / score.BAR
+        if abs(bars - round(bars)) * score.BAR > TOLERANCE:
+            off.append(f"{chapter} starts at {start} s, {bars:.4f} bars of {score.BAR} s")
+    assert not off, "chapters that do not start on a bar, expected a whole number of bars:\n" + "\n".join(off)
