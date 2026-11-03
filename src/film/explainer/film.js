@@ -69,12 +69,12 @@ function link([ax, ay, edgeA], [bx, by, edgeB], attrs) {
   return `<line x1="${ax + ux * a}" y1="${ay + uy * a}" x2="${bx - ux * b}" y2="${by - uy * b}" ${attrs}/>`;
 }
 // The order a model is built in: an anchor model's anchors, then what describes them (attributes, then
-// their lines), then what relates them (the tie, then its lines); a star's entities, then the bridge,
-// then the spokes joining them. Other shapes appear in one group.
+// their lines), then what relates them (the tie, then its lines); a star's entities, then the spokes,
+// then the bridge that ties them together, last. Other shapes appear in one group.
 function groupOf(kind, i) {
   const S = F.stages;
   if (kind === 'anchor') return S.anchors.includes(i) ? 0 : S.attributes.includes(i) ? 1 : 3;
-  if (kind === 'star') return i === S.bridge ? 1 : 0;
+  if (kind === 'star') return i === S.bridge ? 2 : 0;
   return 0;
 }
 function shape(kind, colour) {
@@ -101,7 +101,7 @@ function shape(kind, colour) {
     }
     if (kind === 'star') {
       const [cx, cy, s] = centre(S.bridge), bridge = [cx, cy, EDGE.diamond(13 * s)];
-      layout.forEach((_, i) => { if (i !== S.bridge) { const [x, y] = centre(i); add(link(bridge, [x, y, EDGE.square(11 * s)], `class="ln" data-group="2" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"`)); } });
+      layout.forEach((_, i) => { if (i !== S.bridge) { const [x, y] = centre(i); add(link(bridge, [x, y, EDGE.square(11 * s)], `class="ln" data-group="1" stroke="${COLOUR[colour]}" stroke-opacity="0.55" stroke-width="2"`)); } });
     }
     layout.forEach((p, i) => {
       const [x, y, s] = at(p);
