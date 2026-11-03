@@ -1,0 +1,37 @@
+{"ProductSubcategoryId": 1, "ProductCategoryId": 1, "Name": "Mountain Bikes", "Rowguid": "2d364ade-264a-433c-b092-4fcbf3804e01", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 2, "ProductCategoryId": 1, "Name": "Road Bikes", "Rowguid": "000310c0-bcc8-42c4-b0c3-45ae611af06b", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 3, "ProductCategoryId": 1, "Name": "Touring Bikes", "Rowguid": "02c5061d-ecdc-4274-b5f1-e91d76bc3f37", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 4, "ProductCategoryId": 2, "Name": "Handlebars", "Rowguid": "3ef2c725-7135-4c85-9ae6-ae9a3bdd9283", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 5, "ProductCategoryId": 2, "Name": "Bottom Brackets", "Rowguid": "a9e54089-8a1e-4cf5-8646-e3801f685934", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 6, "ProductCategoryId": 2, "Name": "Brakes", "Rowguid": "d43ba4a3-ef0d-426b-90eb-4be4547dd30c", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 7, "ProductCategoryId": 2, "Name": "Chains", "Rowguid": "e93a7231-f16c-4b0f-8c41-c73fdec62da0", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 8, "ProductCategoryId": 2, "Name": "Cranksets", "Rowguid": "4f644521-422b-4f19-974a-e3df6102567e", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 9, "ProductCategoryId": 2, "Name": "Derailleurs", "Rowguid": "1830d70c-aa2a-40c0-a271-5ba86f38f8bf", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 10, "ProductCategoryId": 2, "Name": "Forks", "Rowguid": "b5f9ba42-b69b-4fdd-b2ec-57fb7b42e3cf", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 11, "ProductCategoryId": 2, "Name": "Headsets", "Rowguid": "7c782bbe-5a16-495a-aa50-10afe5a84af2", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 12, "ProductCategoryId": 2, "Name": "Mountain Frames", "Rowguid": "61b21b65-e16a-4be7-9300-4d8e9db861be", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 13, "ProductCategoryId": 2, "Name": "Pedals", "Rowguid": "6d24ac07-7a84-4849-864a-865a14125bc9", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 14, "ProductCategoryId": 2, "Name": "Road Frames", "Rowguid": "5515f857-075b-4f9a-87b7-43b4997077b3", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 15, "ProductCategoryId": 2, "Name": "Saddles", "Rowguid": "049fffa3-9d30-46df-82f7-f20730ec02b3", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 16, "ProductCategoryId": 2, "Name": "Touring Frames", "Rowguid": "d2e3f1a8-56c4-4f36-b29d-5659fc0d2789", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 17, "ProductCategoryId": 2, "Name": "Wheels", "Rowguid": "43521287-4b0b-438e-b80e-d82d9ad7c9f0", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 18, "ProductCategoryId": 3, "Name": "Bib-Shorts", "Rowguid": "67b58d2b-5798-4a90-8c6c-5ddacf057171", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 19, "ProductCategoryId": 3, "Name": "Caps", "Rowguid": "430dd6a8-a755-4b23-bb05-52520107da5f", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 20, "ProductCategoryId": 3, "Name": "Gloves", "Rowguid": "92d5657b-0032-4e49-bad5-41a441a70942", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 21, "ProductCategoryId": 3, "Name": "Jerseys", "Rowguid": "09e91437-ba4f-4b1a-8215-74184fd95db8", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 22, "ProductCategoryId": 3, "Name": "Shorts", "Rowguid": "1a5ba5b3-03c3-457c-b11e-4fa85ede87da", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 23, "ProductCategoryId": 3, "Name": "Socks", "Rowguid": "701019c3-09fe-4949-8386-c6ce686474e5", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 24, "ProductCategoryId": 3, "Name": "Tights", "Rowguid": "5deb3e55-9897-4416-b18a-515e970bc2d1", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 25, "ProductCategoryId": 3, "Name": "Vests", "Rowguid": "9ad7fe93-5ba0-4736-b578-ff80a2071297", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 26, "ProductCategoryId": 4, "Name": "Bike Racks", "Rowguid": "4624b5ce-66d6-496b-9201-c053df3556cc", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 27, "ProductCategoryId": 4, "Name": "Bike Stands", "Rowguid": "43b445c8-b820-424e-a1d5-90d81da0b46f", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 28, "ProductCategoryId": 4, "Name": "Bottles and Cages", "Rowguid": "9b7dff41-9fa3-4776-8def-2c9a48c8b779", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 29, "ProductCategoryId": 4, "Name": "Cleaners", "Rowguid": "9ad3bcf0-244d-4ec4-a6a0-fb701351c6a3", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 30, "ProductCategoryId": 4, "Name": "Fenders", "Rowguid": "1697f8a2-0a08-4883-b7dd-d19117b4e9a7", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 31, "ProductCategoryId": 4, "Name": "Helmets", "Rowguid": "f5e07a33-c9e0-439c-b5f3-9f25fb65becc", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 32, "ProductCategoryId": 4, "Name": "Hydration Packs", "Rowguid": "646a8906-fc87-4267-a443-9c6d791e6693", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 33, "ProductCategoryId": 4, "Name": "Lights", "Rowguid": "954178ba-624f-42db-95f6-ca035f36d130", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 34, "ProductCategoryId": 4, "Name": "Locks", "Rowguid": "19646983-3fa0-4773-9a0c-f34c49df9bc8", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 35, "ProductCategoryId": 4, "Name": "Panniers", "Rowguid": "3002a5d5-fec3-464b-bef3-e0f81d35f431", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 36, "ProductCategoryId": 4, "Name": "Pumps", "Rowguid": "fe4d46f2-c87c-48c5-a4a1-3f55712d80b1", "ModifiedDate": "2008-04-30"}
+{"ProductSubcategoryId": 37, "ProductCategoryId": 4, "Name": "Tires and Tubes", "Rowguid": "3c17c9ae-e906-48b4-bdd3-60e28d47dcdf", "ModifiedDate": "2008-04-30"}
