@@ -1,12 +1,18 @@
 version: 2
 models:
 - name: bridge__product
-  description: 'The staged bridge of product: its own keys, one row per version.'
+  description: 'The staged bridge of product: its own keys and those it reaches over its to-one ties,
+    one row per interval over which none of them changes.'
+  data_tests:
+  - unique:
+      column_name: _key__product || '@' || cast(_valid_from as varchar)
   columns:
   - name: _key__product
     data_tests:
     - not_null
-    - unique
+  - name: _key__product_subcategory
+    data_tests:
+    - not_null
 - name: bridge__product_subcategory
   description: 'The staged bridge of product_subcategory: its own keys, one row per version.'
   columns:

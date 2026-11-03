@@ -1,7 +1,7 @@
 -- The product_subcategory dimension: one row per version on business time, the first from 0001-01-01,
 -- plus the ghost rows [not available] and [not applicable].
-{{ config(materialized='incremental', pre_hook="{{ uss_forget({'entity': 'product_subcategory', 'anchor': 'PS_ProductSubcategory', 'anchor_mnemonic': 'PS', 'attributes': [{'prefix': 'PS_SID', 'name': 'PS_SID_ProductSubcategory_SourceId'}, {'prefix': 'PS_NAM', 'name': 'PS_NAM_ProductSubcategory_Name'}]}) }}") }}
-{% set e = {'entity': 'product_subcategory', 'anchor': 'PS_ProductSubcategory', 'anchor_mnemonic': 'PS', 'attributes': [{'prefix': 'PS_SID', 'name': 'PS_SID_ProductSubcategory_SourceId'}, {'prefix': 'PS_NAM', 'name': 'PS_NAM_ProductSubcategory_Name'}]} %}
+{{ config(materialized='incremental', pre_hook="{{ uss_forget({'entity': 'product_subcategory', 'anchor': 'PS_ProductSubcategory', 'anchor_mnemonic': 'PS', 'attributes': [{'prefix': 'PS_SID', 'name': 'PS_SID_ProductSubcategory_SourceId'}, {'prefix': 'PS_NAM', 'name': 'PS_NAM_ProductSubcategory_Name'}], 'ties': []}) }}") }}
+{% set e = {'entity': 'product_subcategory', 'anchor': 'PS_ProductSubcategory', 'anchor_mnemonic': 'PS', 'attributes': [{'prefix': 'PS_SID', 'name': 'PS_SID_ProductSubcategory_SourceId'}, {'prefix': 'PS_NAM', 'name': 'PS_NAM_ProductSubcategory_Name'}], 'ties': []} %}
 with {{ uss_versions(e) }}
 select
     v._key as _key__product_subcategory,
