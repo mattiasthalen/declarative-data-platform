@@ -391,7 +391,11 @@ def test_kind_shapes(seven):
             else:
                 pytest.fail(f"{number} in load {load.load_id}: ModifiedDate {was} -> {now} fits no kind")
             if kind == "source null":
-                nulled = [k for k in BUSINESS if previous.get(k) is not None and row.get(k) is None]
+                nulled = [
+                    k
+                    for k in (*BUSINESS, "ProductSubcategoryId")
+                    if previous.get(k) is not None and row.get(k) is None
+                ]
                 assert nulled, (number, previous, row)
         for number, row in found["new"].items():
             assert number not in found["seen_numbers"], number
