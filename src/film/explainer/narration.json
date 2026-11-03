@@ -1,0 +1,22 @@
+{
+  "voice": "af_heart",
+  "speed": 1.0,
+  "lines": [
+    {"text": "Most data platforms are written by hand, one layer at a time, and each layer drifts from the last.", "cue": 0.6},
+    {"text": "Here, you declare what you have, and generators write the rest.", "cue": 6.0},
+    {"text": "Ingest is where data arrives. A short file declares what a source serves.", "cue": 10.6},
+    {"text": "Ingest lands every load in the lake, as it came, so nothing is ever lost.", "cue": 16.4},
+    {"text": "Each resource gets its own pipeline, so one failure never halts the rest.", "cue": 24.4},
+    {"text": "Conform gives raw rows a shape. A data contract types each field and marks its key.", "cue": 30.6},
+    {"text": "Why? A contract is a promise. A value that breaks it is flagged, never trusted.", "cue": 37.4},
+    {"text": "Every contract becomes a staged model, generated, never written by hand.", "cue": 44.4},
+    {"text": "Integrate is the memory of the business. An Anchor model declares what the business knows.", "cue": 50.6},
+    {"text": "Why? Sources come and go, but the business stays. Every change is kept, with when it was true, and when we learned it.", "cue": 56.6},
+    {"text": "As more sources are declared, the same model grows, one anchor at a time.", "cue": 64.4},
+    {"text": "Serve is where questions get answered. From the same model, it generates a Unified Star Schema.", "cue": 70.6},
+    {"text": "Why? So anyone can join anything to anything, through one bridge, without knowing how it was built.", "cue": 77.0},
+    {"text": "Today serve generates a star. Because it is generated, other shapes can follow.", "cue": 84.4},
+    {"text": "One schedule ties it together. Every source is ingested on its own, then the platform builds once.", "cue": 90.4},
+    {"text": "Declarations in. Structure out.", "cue": 96.6}
+  ]
+}
