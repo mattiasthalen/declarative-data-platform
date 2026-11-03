@@ -46,11 +46,15 @@ ANCHOR = [(CENTRES[i][0] - 11, CENTRES[i][1] - 11) for i in range(9)]
 STAR = [(568.6, 78.6), (604, 114), (639.4, 78.6), (554, 114), (604, 64), (654, 114), (568.6, 149.4), (604, 164), (639.4, 149.4)]
 BRIDGE = 1
 
+# From the bridge diamond's edge to each ring tile, where #37 drew them (the diagonals meet a rounded corner).
 SPOKES = [
-    ((626, 125), (654, 125)), ((604, 125), (576, 125)), ((615, 136), (615, 164)), ((615, 114), (615, 86)),
-    ((624.83, 134.83), (640.57, 150.57)), ((605.17, 134.83), (589.43, 150.57)),
-    ((605.17, 115.17), (589.43, 99.43)), ((624.83, 115.17), (640.57, 99.43)),
+    ((628, 125), (654, 125)), ((602, 125), (576, 125)), ((615, 138), (615, 164)), ((615, 112), (615, 86)),
+    ((621.5, 131.5), (640.57, 150.57)), ((608.5, 131.5), (589.43, 150.57)),
+    ((608.5, 118.5), (589.43, 99.43)), ((621.5, 118.5), (640.57, 99.43)),
 ]
+
+# The bridge is the explainer film's: a lit diamond, a little larger than the tie it grows from.
+TIE_RADIUS, BRIDGE_RADIUS = 12, 13
 
 # Percent of the run at which each stage is reached and left: tiles travel between them.
 APPEAR, RAW_HELD, GRID_IN, GRID_OUT, ANCHOR_IN, ANCHOR_OUT, STAR_IN = 5, 7, 17, 30, 39, 52, 61
@@ -98,21 +102,28 @@ def square_edge(dx: float, dy: float) -> float:
     return 11 * math.hypot(dx, dy) / max(abs(dx), abs(dy))
 
 
+def diamond(cx: float, cy: float, radius: float) -> str:
+    return f"{num(cx)},{num(cy - radius)} {num(cx + radius)},{num(cy)} {num(cx)},{num(cy + radius)} {num(cx - radius)},{num(cy)}"
+
+
 def anchor_lines() -> str:
     lines = []
     for centre in ATTRIBUTES.values():
         anchor = LEFT if centre[0] < TIE[0] else RIGHT
         lines.append(segment(anchor, centre, square_edge(centre[0] - anchor[0], centre[1] - anchor[1]), 9))
-    lines += [segment(LEFT, TIE, 11, 11), segment(TIE, RIGHT, 11, 11)]
+    lines += [segment(LEFT, TIE, 11, TIE_RADIUS), segment(TIE, RIGHT, TIE_RADIUS, 11)]
     return "".join(lines)
 
 
-def lit(x: float, y: float) -> str:
-    """A tile in the accent: the bridge in the still, an anchor while stage three holds."""
-    return (
-        f'<rect x="{num(x)}" y="{num(y)}" width="22" height="22" rx="4" {LIT}/>'
-        f'<circle cx="{num(x + 11)}" cy="{num(y + 11)}" r="3.5" fill="{ACCENT}" stroke="none"/>'
+def lit(x: float, y: float, *, bridge: bool = False) -> str:
+    """A tile in the accent: an anchor while stage three holds, or, as a diamond, the bridge."""
+    cx, cy = x + 11, y + 11
+    body = (
+        f'<polygon points="{diamond(cx, cy, BRIDGE_RADIUS)}" stroke-linejoin="round" {LIT}/>'
+        if bridge
+        else f'<rect x="{num(x)}" y="{num(y)}" width="22" height="22" rx="4" {LIT}/>'
     )
+    return body + f'<circle cx="{num(cx)}" cy="{num(cy)}" r="3.5" fill="{ACCENT}" stroke="none"/>'
 
 
 def tile(i: int) -> str:
@@ -120,12 +131,11 @@ def tile(i: int) -> str:
     cx, cy = x + 11, y + 11
     square = f'<rect x="{num(x)}" y="{num(y)}" width="22" height="22" rx="4"/>'
     if i == BRIDGE:
-        diamond = f'{num(cx)},{num(cy - 12)} {num(cx + 12)},{num(cy)} {num(cx)},{num(cy + 12)} {num(cx - 12)},{num(cy)}'
         return (
             f'<g class="t{i}">'
             f'<g class="square-out" opacity="0">{square}</g>'
-            f'<polygon class="shape" opacity="0" points="{diamond}" stroke-linejoin="round"/>'
-            f'<g class="bridge">{lit(x, y)}</g>'
+            f'<polygon class="shape" opacity="0" points="{diamond(cx, cy, TIE_RADIUS)}" stroke-linejoin="round"/>'
+            f'<g class="bridge">{lit(x, y, bridge=True)}</g>'
             "</g>"
         )
     if i in ANCHORS:
