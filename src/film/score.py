@@ -22,8 +22,9 @@ BPM = 96
 BEAT = 60 / BPM
 BAR = 4 * BEAT  # 2.5 s: every chapter starts on a bar
 BED = 10 ** (-3 / 20)  # the whole score sits a little under the voice
-DUCK = 10 ** (-18 / 20)  # and further down while a line is spoken
-DUCK_LEAD, DUCK_RELEASE = 0.15, 0.4
+DUCK = 10 ** (-12 / 20)  # and further down while a line is spoken
+DUCK_LEAD, DUCK_RELEASE = 0.3, 1.0
+BRIDGE = 1.5  # lines closer than this stay under one duck, so the score doesn't swell between them
 
 # One chord a bar: Am, C/G, F, E, until the lockup rests on Am.
 PROGRESSION = ["Am", "C/G", "F", "E"]
@@ -224,11 +225,21 @@ def _reverb(send: np.ndarray, rng) -> np.ndarray:
 def _ducking(t: np.ndarray, cues: list[tuple[float, float]]) -> np.ndarray:
     """1 away from speech, DUCK while a line is spoken, with short ramps either side."""
     depth = np.zeros_like(t)
-    for start, end in cues:
+    for start, end in _bridged(cues):
         rise = np.clip((t - (start - DUCK_LEAD)) / DUCK_LEAD, 0, 1)
         fall = np.clip(((end + DUCK_RELEASE) - t) / DUCK_RELEASE, 0, 1)
         depth = np.maximum(depth, np.minimum(rise, fall))
     return 1 - depth * (1 - DUCK)
+
+
+def _bridged(cues: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    merged: list[list[float]] = []
+    for start, end in sorted(cues):
+        if merged and start - merged[-1][1] < BRIDGE:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return [(start, end) for start, end in merged]
 
 
 def _master(mix: np.ndarray, duration: float, rng) -> bytes:
