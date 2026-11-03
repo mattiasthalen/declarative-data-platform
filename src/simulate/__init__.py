@@ -47,9 +47,10 @@ MIX = (
     ("late arrival", 10),
     ("new product", 5),
     ("drop out", 10),
-    ("move subcategory", 5),
-    ("lose subcategory", 3),
 )
+# Beside the mix, each load moves one product to another subcategory and takes one product's away,
+# from a random stream of their own, so a seed's other changes stay as they were before story #6.
+SUBCATEGORY_KINDS = ("move subcategory", "lose subcategory")
 
 
 class BadLoad(Exception):
@@ -170,6 +171,8 @@ class Simulation:
                 self.edit_fallback(rng, rows[number], day)
             elif not self.change(rng, rows[number], kind, day):
                 self.edit_fallback(rng, rows[number], day)
+        if self.subcategories:
+            self.change_subcategories(index, rows, set(picked), day)
         out = [rows[number] for number in sorted(rows, key=lambda n: self.order(n, rows))]
         out.extend(new_rows)
         self.rows = out
@@ -244,6 +247,16 @@ class Simulation:
         if kind == "edit":
             row[CHANGED_AT] = day.isoformat()
         return True  # a correction keeps ModifiedDate
+
+    def change_subcategories(self, index: int, rows: dict, changed: set, day: date) -> None:
+        """Apply each of SUBCATEGORY_KINDS to one product this load has not changed otherwise."""
+        rng = random.Random(f"{self.seed}:{index}:subcategory kinds")
+        untouched = [n for n in sorted(rows) if n not in changed and n not in self.held_back]
+        for kind in SUBCATEGORY_KINDS:
+            for number in rng.sample(untouched, len(untouched)):
+                if self.change(rng, rows[number], kind, day):
+                    untouched.remove(number)
+                    break
 
     def next_subcategories(self, index: int, day: date) -> list[dict]:
         """The next subcategories load: the latest, with one subcategory a product is in renamed at ``day``."""
