@@ -8,7 +8,9 @@ MP4; a deploy job only on ``refs/heads/main`` that needs the render, holds ``pag
 ``id-token: write``, runs in the ``github-pages`` environment, is not cancelled once started and
 deploys with ``actions/deploy-pages``. Every action is pinned to a commit SHA, and nothing writes a
 release or contents. ``ci.yml`` keeps ``contents: read`` and installs Chromium for the stills. The
-page the site serves plays the MP4 inline.
+page the site serves plays the MP4 inline. The MP4 the workflow stages and the page plays is
+``film.render.CUT``, the name the render writes, so a rename of it fails here and not only in the
+deploy on main.
 
 - ``-k film_workflow``: AC11.
 """
@@ -21,11 +23,13 @@ from html.parser import HTMLParser
 import yaml
 from harness import REPO
 
+from film.render import CUT
+
 WORKFLOWS = REPO / ".github" / "workflows"
 FILM = WORKFLOWS / "film.yml"
 CI = WORKFLOWS / "ci.yml"
 PAGE = "src/film/site/index.html"
-ASSET = "declarative-data-platform-explainer.mp4"
+ASSET = CUT
 # [1b]: what a push to main must touch to render.
 PATHS = {"src/film", "src/artwork", "sources", "contracts", "anchor", "orchestrate/prefect.yaml"}
 FILES = {"orchestrate/prefect.yaml"}

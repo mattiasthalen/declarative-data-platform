@@ -320,7 +320,8 @@ looks and how it sounds are not run. The reviewer records pass or fail for each 
 ## J39-1: the film (AC14)
 
 Watch the rendered cut, `out/film/declarative-data-platform-explainer.mp4` from `uv run task
-film` (or the asset on the `explainer` release), once with sound, then again muted. It passes
+film` (or the film on GitHub Pages, https://mattiasthalen.github.io/declarative-data-platform/),
+once with sound, then again muted. It passes
 when all of these hold:
 
 1. Each of ingest, conform, integrate and serve has a chapter that says what the layer does and
