@@ -155,9 +155,9 @@ infra's server, set `PREFECT_API_URL` and `ORCHESTRATE_WORK_POOL` to its values 
 
 `uv run task --list` shows every task. Integrate ignores `--full-refresh` and builds incrementally:
 its history is only appended to (ADR-0006). Serve's incremental models fail when a change of the
-model changes their columns; run `uv run dbt build --target <target> --full-refresh` once on each
-target built before it (ADR-0038). Serve's incremental models fail when a change of the
-model changes their columns; run `uv run task build -- --full-refresh` once on that target (ADR-0038).
+model changes their columns; run
+`uv run dbt build --target <target> --full-refresh --select path:models/serve` once on each target
+built before it (ADR-0038).
 
 The first business question it answers: how many products were on sale on a given day,
 per product line and colour? It reads each product's version valid on that day; the first

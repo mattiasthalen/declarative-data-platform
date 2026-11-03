@@ -1,4 +1,4 @@
-"""Simulate source change: append seeded, changed copies of the latest Products load (ADR-0027).
+"""Simulate source change: append seeded, changed copies of the latest Products and ProductSubcategories loads (ADR-0027).
 
 Beside each Products load it lands a ProductSubcategories load, the latest one with a subcategory
 renamed, so the subcategory a product is in, and the subcategory's name, change too (story #6).
@@ -317,7 +317,7 @@ def format_id(value: Decimal) -> str:
 def parse(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="simulate",
-        description="Append seeded, changed copies of the latest Products load to $LAKE_ROOT.",
+        description="Append seeded, changed copies of the latest Products and ProductSubcategories loads to $LAKE_ROOT.",
     )
     parser.add_argument("--seed", type=int, help="seed for the changes (default: random, printed)")
     parser.add_argument("--loads", type=int, default=1, help="how many changed loads to append (default 1)")

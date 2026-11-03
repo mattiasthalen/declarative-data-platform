@@ -14,4 +14,4 @@ Rejected: one bridge row per tie version holding only the tie's other identity, 
 
 ## Consequences
 
-For any instant, each identity has exactly one row in its stage. Every dimension change multiplies the rows of each entity that reaches it, bounded by the versions involved. One-to-one ties (#8) and self-ties (#10) extend which ties are followed; neither is followed yet. A tie adds columns to an incremental stage, so serve's incremental models fail on a change of columns rather than keep their old shape, and a target built before needs one `dbt build --full-refresh`, which rebuilds only serve (ADR-0006).
+For any instant, each identity has exactly one row in its stage. Every dimension change multiplies the rows of each entity that reaches it, bounded by the versions involved. One-to-one ties (#8) and self-ties (#10) extend which ties are followed; neither is followed yet. A tie adds columns to an incremental stage, so serve's incremental models fail on a change of columns rather than keep their old shape, and a target built before needs one `dbt build --full-refresh --select path:models/serve`, which rebuilds serve alone.

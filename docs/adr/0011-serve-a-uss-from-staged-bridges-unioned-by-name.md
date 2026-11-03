@@ -24,4 +24,4 @@ The backfill of each first value to `0001-01-01` is serve's alone. Integrate nev
 
 ## Addendum 2026-11-03
 
-Relationships reach the staged bridges as [ADR-0038](0038-split-a-staged-bridge-at-every-change-of-what-it-reaches-over-to-one-ties.md) decides: a staged bridge follows each tie in which its anchor is the only identifier role, one step, and is split at every change of what it reaches. Ties are backfilled as attributes are ([ADR-0039](0039-backfill-a-ties-first-version-in-serve-as-an-attributes.md)).
+Relationships reach the staged bridges as [ADR-0038](0038-split-a-staged-bridge-at-every-change-of-what-it-reaches-over-to-one-ties.md) decides: a staged bridge follows each tie in which its anchor is the only identifier role, one step, and is split at every change of what it reaches. Ties are backfilled as attributes are ([ADR-0039](0039-backfill-a-ties-first-version-in-serve-as-an-attributes.md)). Where a tie has no version, the staged bridge writes `[not available]` itself rather than a null, since the bridge reads a null as not applicable.

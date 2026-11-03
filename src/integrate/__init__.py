@@ -407,7 +407,7 @@ def json_key(*pairs: str) -> str:
 
 
 def history_checks(
-    name: str, m: str, posit: str, annex: str, identity: str, value: str, referenced: list, description: str
+    name: str, *, m: str, posit: str, annex: str, identity: str, value: str, referenced: list, description: str
 ) -> dict[str, str]:
     """The ``ic_`` views of a historized attribute or tie: its posit's and annex's keys, the anchors
     each ``referenced`` column must name, and positor 0 asserting one value per identity and ChangedAt."""
@@ -480,8 +480,9 @@ def integrity_files(anchor: Anchor, attributes: list[Attribute], identifier: Att
     for t in attributes:
         m = t.prefix
         files |= history_checks(
-            t.name, m, t.posit, t.annex, f"{m}_{a}", t.name, [(anchor, f"{m}_{a}")],
-            f"What {t.posit} and {t.annex} say together: positor 0 asserting more than one value "
+            t.name, m=m, posit=t.posit, annex=t.annex, identity=f"{m}_{a}", value=t.name,
+            referenced=[(anchor, f"{m}_{a}")],
+            description=f"What {t.posit} and {t.annex} say together: positor 0 asserting more than one value "
             "for one identity and ChangedAt at its latest PositedAt (the model is decisive).",
         )
     k = identifier
@@ -619,9 +620,9 @@ def tie_files(tie: Tie, identifier: Attribute) -> dict[str, str]:
         "positingTimepoint (ADR-0033).",
     )
     files |= history_checks(
-        tie.name, tie.name, tie.posit, tie.annex, tie.identity_column, tie.value_column,
-        [(tie.owner, tie.identity_column), (tie.other, tie.value_column)],
-        f"The key of {tie.name}: positor 0 asserting more than one {tie.other.descriptor} for one "
+        tie.name, m=tie.name, posit=tie.posit, annex=tie.annex, identity=tie.identity_column,
+        value=tie.value_column, referenced=[(tie.owner, tie.identity_column), (tie.other, tie.value_column)],
+        description=f"The key of {tie.name}: positor 0 asserting more than one {tie.other.descriptor} for one "
         f"{tie.owner.descriptor} and ChangedAt at its latest PositedAt.",
     )
     return files
