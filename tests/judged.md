@@ -456,7 +456,7 @@ Pass when all of these hold:
 
 1. AC1, the palette matches the sketch:
    1. The tempo is 96 BPM.
-   2. A pad plays the chords Am, C/G, F, E, one a bar.
+   2. A pad plays the chords Am, C/G, F, E, one a bar, until the lockup rests on Am.
    3. The bass jumps octaves in 16ths on the chord roots.
    4. A pulse arpeggio runs in 8ths.
    5. A dry kick plays on every beat, and a short, dry snare on beat 3.
