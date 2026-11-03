@@ -2,9 +2,10 @@
 (story #39: AC10).
 
 ``film.voice.verify(models)`` raises ``film.voice.ModelError`` for a missing file or a checksum
-mismatch, before anything loads them. ``film.voice.place(lines, synthesize)`` places each
+mismatch, before anything loads them. ``film.voice.place(lines, synthesize, end=...)`` places each
 narration line (``{"text", "cue"}``) at its cue and raises ``film.voice.Overrun``, naming the
-line, when one runs past the next cue; ``synthesize(text)`` returns a numpy array at 24 kHz.
+line, when one runs past the next cue, or the last past ``end`` (the lockup's start, where the
+last caption ends); ``synthesize(text)`` returns a numpy array at 24 kHz.
 Every test here stubs the synthesizer and none needs the Kokoro files (EC4).
 
 - ``-k film_voice_guards``: AC10.
@@ -19,6 +20,8 @@ import pytest
 from film import voice
 
 RATE = 24000
+# Where the last of LINES must have finished: the lockup's start.
+END = 15.0
 LINES = [
     {"text": "Pipelines are written by hand.", "cue": 0.0},
     {"text": "Ingest lands what a source declares.", "cue": 5.0},
@@ -66,14 +69,28 @@ def verify_refuses_bad_models(tmp_path) -> None:
 def place_refuses_an_overrun() -> None:
     """AC10: place accepts lines that end before the next cue, and raises Overrun, naming the line,
     when the synthesized audio of one runs past the next line's cue."""
-    placed = voice.place(LINES, stub({}))
+    placed = voice.place(LINES, stub({}), end=END)
     assert len(placed) == len(LINES), f"place placed {len(placed)} of {len(LINES)} lines"
 
     long = LINES[1]["text"]
     with pytest.raises(voice.Overrun) as raised:
-        voice.place(LINES, stub({long: 6.5}))
+        voice.place(LINES, stub({long: 6.5}), end=END)
     assert long in str(raised.value) or re.search(r"\bline\s*2\b", str(raised.value), re.IGNORECASE), (
         f"the Overrun does not name the line that runs over: {raised.value}"
+    )
+
+
+def test_film_voice_guards_last_line():
+    """AC10, review F7: the last line is held to the lockup's start (``end``) as every other line
+    is held to the next cue; place raises Overrun, naming it, when it runs past."""
+    last = LINES[-1]["text"]
+    placed = voice.place(LINES, stub({last: 3.0}), end=END)
+    assert len(placed) == len(LINES), f"place placed {len(placed)} of {len(LINES)} lines"
+
+    with pytest.raises(voice.Overrun) as raised:
+        voice.place(LINES, stub({last: 6.5}), end=END)
+    assert last in str(raised.value) or re.search(rf"\bline\s*{len(LINES)}\b", str(raised.value), re.IGNORECASE), (
+        f"the Overrun does not name the last line, which runs past the lockup: {raised.value}"
     )
 
 

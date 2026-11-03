@@ -6,20 +6,19 @@
 a list of them), ``path`` relative to ``root``, and ``zoom_out`` is ``{"tiles": [{"kind",
 "name"}]}``. ``CARD_LINES`` and ``CARD_COLUMNS`` are module constants; a missing file or a line
 wider than ``CARD_COLUMNS`` raises ``film.data.DeclarationError`` naming the path (and the line).
-``film.data.tile_grid(n, width, height)`` lays out a zoom-out's ``n`` tiles.
+EC2 is checked on what the page draws, in ``test_page.py``.
 
 The throwaway copies here are plain file copies of the repo: ``build`` runs in this process on
 the copy's root, so no copy needs its own environment.
 
 - ``-k film_reads_declarations``: AC3. ``-k film_zoom_out``: AC4 (and EC2, whose name it
-  prefixes). ``-k film_zoom_out_scales``: EC2. ``-k film_overflow``: AC5.
+  prefixes, in ``test_page.py``). ``-k film_overflow``: AC5.
   ``-k film_missing_declaration``: EC1. ``-k film_out_ignored``: EC3.
 """
 
 from __future__ import annotations
 
 import copy
-import itertools
 import re
 import shutil
 import subprocess
@@ -198,40 +197,6 @@ def test_film_zoom_out(tmp_path):
         f"adding sources/adventure_works/extra.yaml made the ingest zoom-out {len(drawn)} tiles, expected {before + 1}"
     )
     assert any("extra" in str(tile["name"]).lower() for tile in drawn), f"no ingest tile names extra: {drawn}"
-
-
-# --------------------------------------------------------------------------- EC2
-
-
-def rect(tile) -> tuple[float, float, float, float]:
-    """(x, y, width, height) of one placed tile, as a tuple or a dict."""
-    if isinstance(tile, dict):
-        width = tile.get("width", tile.get("w"))
-        height = tile.get("height", tile.get("h"))
-        x, y = tile["x"], tile["y"]
-    else:
-        x, y, width, height = tile
-    return float(x), float(y), float(width), float(height)
-
-
-@pytest.mark.parametrize("n", [1, 7, 100, 200])
-def test_film_zoom_out_scales(n):
-    """EC2: tile_grid places n tiles inside a 1920x1080 frame with none overlapping, for 100
-    resources and 100 anchors as for few; the tiles shrink as the count grows."""
-    width, height = 1920, 1080
-    placed = [rect(t) for t in data.tile_grid(n, width, height)]
-    assert len(placed) == n, f"tile_grid({n}) placed {len(placed)} tiles"
-    for x, y, w, h in placed:
-        assert w > 0 and h > 0, f"a tile of tile_grid({n}) has no size: {(x, y, w, h)}"
-        assert x >= 0 and y >= 0 and x + w <= width and y + h <= height, (
-            f"a tile of tile_grid({n}) leaves the {width}x{height} frame: {(x, y, w, h)}"
-        )
-    for a, b in itertools.combinations(placed, 2):
-        overlap = a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
-        assert not overlap, f"tiles of tile_grid({n}) overlap: {a} and {b}"
-    if n > 1:
-        few = rect(data.tile_grid(1, width, height)[0])
-        assert placed[0][2] * placed[0][3] < few[2] * few[3], f"tile_grid({n})'s tiles are no smaller than one tile alone"
 
 
 # --------------------------------------------------------------------------- AC5
