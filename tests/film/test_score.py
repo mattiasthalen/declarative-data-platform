@@ -84,14 +84,19 @@ def test_film_score_bridges_short_gaps():
     assert rise >= 4, f"in a 4 s gap between cues the score is {rise:+.1f} dB from its ducked level, expected at least 4 dB above"
 
 
-# AC12 (#49): the score's loudest sample, and the least its RMS beside a cue may be, in dBFS.
+# AC12 (#49), in dBFS: the score's loudest sample; the most its RMS may be under a cue, which
+# keeps the music at least 12 dB under Lewis, whose RMS while speaking measures about -22 to
+# -23 dBFS; and the least its RMS beside a cue may be.
 BED_PEAK = -15.0
+BED_DUCKED_CEILING = -35.0
 BED_FLOOR = -45.0
 
 
 def test_film_score_bed():
-    """AC12 (#49): the score peaks at or below -15 dBFS, so it sits under the voice, and its RMS
-    beside the cue stays above -45 dBFS, so it is still heard."""
+    """AC12 (#49): the score peaks at or below -15 dBFS; its RMS under the cue is at most
+    -35 dBFS, at least 12 dB under Lewis's voice (a peak limit alone admits a score driven
+    harder, louder under the same peak); and its RMS beside the cue stays above -45 dBFS, so the
+    music is still heard."""
     import numpy as np
 
     audio = samples(score.render(DURATION, CUES))
@@ -99,6 +104,12 @@ def test_film_score_bed():
     assert peak > 0, "the score is silent"
     peak_db = 20 * math.log10(peak)
     assert peak_db <= BED_PEAK, f"the score peaks at {peak_db:.1f} dBFS, expected at most {BED_PEAK}"
+
+    under = rms(audio, *INSIDE) / 32768
+    under_db = 20 * math.log10(under) if under > 0 else -math.inf
+    assert under_db <= BED_DUCKED_CEILING, (
+        f"the score's RMS under the cue, over {INSIDE} s, is {under_db:.1f} dBFS, expected at most {BED_DUCKED_CEILING}"
+    )
 
     beside = rms(audio, *OUTSIDE[1]) / 32768
     beside_db = 20 * math.log10(beside) if beside > 0 else -math.inf
