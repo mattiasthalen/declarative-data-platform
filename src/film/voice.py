@@ -73,21 +73,20 @@ def synthesizer(models: Path, voice: str, speed: float) -> Callable[[str], np.nd
     return synthesize
 
 
-def place(lines: list[dict], synthesize: Callable[[str], np.ndarray]) -> list[dict]:
+def place(lines: list[dict], synthesize: Callable[[str], np.ndarray], end: float) -> list[dict]:
     """Each line from its cue, or right after the line before; an Overrun when one would still be
-    speaking at the next line's cue."""
+    speaking at the next line's cue, or the last line at ``end``, where its caption ends."""
     placed = []
     previous_end = 0.0
     for number, line in enumerate(lines, 1):
         audio = synthesize(line["text"])
         start = max(line["cue"], previous_end)
-        end = start + len(audio) / KOKORO_RATE
-        if number < len(lines) and end + BREATH > lines[number]["cue"]:
-            raise Overrun(
-                f"line {number} ({line['text']!r}) runs to {end:.2f} s, past line {number + 1}'s cue at {lines[number]['cue']} s"
-            )
-        placed.append({"text": line["text"], "cue": line["cue"], "start": start, "end": end, "audio": audio})
-        previous_end = end
+        stop = start + len(audio) / KOKORO_RATE
+        limit, what = (lines[number]["cue"], f"line {number + 1}'s cue") if number < len(lines) else (end, "the end of its caption")
+        if stop + BREATH > limit:
+            raise Overrun(f"line {number} ({line['text']!r}) runs to {stop:.2f} s, past {what} at {limit} s")
+        placed.append({"text": line["text"], "cue": line["cue"], "start": start, "end": stop, "audio": audio})
+        previous_end = stop
     return placed
 
 

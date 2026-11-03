@@ -169,7 +169,11 @@ def cut(out: Path = OUT, workers: int | None = None) -> Path:
     duration = timeline.duration()
     narration = timeline.narration()
     print("narration: synthesizing", flush=True)
-    placed = voice.place(narration["lines"], voice.synthesizer(MODELS, narration["voice"], narration["speed"]))
+    placed = voice.place(
+        narration["lines"],
+        voice.synthesizer(MODELS, narration["voice"], narration["speed"]),
+        end=timeline.captions()[-1]["end"],
+    )
     for line in placed:
         print(f"  {line['start']:6.2f} to {line['end']:6.2f}  {line['text']}", flush=True)
     voice_wav = out / "voice.wav"
