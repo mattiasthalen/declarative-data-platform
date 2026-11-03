@@ -447,10 +447,10 @@ fails item 1 for that layer: record which, and at what time in the cut.
 
 ## J49-1: the explainer's own sound (AC1, AC2, EC3)
 
-Render the cut with `uv run task film` and listen to it beside the approved reference: the
-approved sketch attached to issue #49's evidence (it lives in the project's files, not in this
-repo). The reviewer records pass or fail for each item, and for a fail, what was heard and at what
-time in the cut.
+Render the cut with `uv run task film` and listen to it beside the approved reference,
+`80s-e-blend-kick.mp3`: the approved sketch, in the project's files for story #49 and attached to
+its evidence page, not in this repo. The reviewer records pass or fail for each item, and for a
+fail, what was heard and at what time in the cut.
 
 Pass when all of these hold:
 
@@ -468,5 +468,6 @@ Pass when all of these hold:
    2. 0:15: the pad, with kick and bass.
    3. 0:35: as at 0:15, with the snare.
    4. 0:55: as at 0:35, with the arpeggio.
-   5. 1:15 and 1:35: everything.
+   5. 1:15: everything.
+   6. 1:45: the lockup, the pad only, resting on Am.
 5. EC3, the last seconds: the pad alone, fading out, and no note is cut off.

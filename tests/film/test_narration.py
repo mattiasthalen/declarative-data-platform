@@ -27,7 +27,7 @@ import pytest
 import yaml
 from harness import REPO
 
-from film import timeline, voice
+from film import render, timeline, voice
 
 NARRATION = REPO / "src" / "film" / "explainer" / "narration.json"
 SOURCE = REPO / "sources" / "adventure_works" / "products.yaml"
@@ -166,19 +166,24 @@ def test_film_narration_voice_lang_has_no_default():
 
 
 def test_film_narration_voice_missing_lang_fails(kokoro, tmp_path, monkeypatch):
-    """EC2: a narration with no ``lang``, read as rendering reads it, fails before synthesis and
-    names ``lang``."""
+    """EC2: ``render.cut`` given a narration with no ``lang`` fails before synthesis, naming
+    ``lang``: it builds no synthesizer and Kokoro speaks no line."""
     narration = json.loads(NARRATION.read_text(encoding="utf-8"))
     narration.pop("lang", None)
     monkeypatch.setattr(timeline, "narration", lambda: narration)
+    monkeypatch.setattr(render.shutil, "which", lambda tool: f"/usr/bin/{tool}")
+    built = []
 
-    loaded = timeline.narration()
-    with pytest.raises((KeyError, TypeError)) as raised:
-        voice.synthesizer(tmp_path, loaded["voice"], loaded["speed"], loaded["lang"])
-    assert "lang" in str(raised.value), f"the failure does not name lang: {raised.value!r}"
-    with pytest.raises(TypeError) as raised:
-        voice.synthesizer(tmp_path, loaded["voice"], loaded["speed"])
-    assert "lang" in str(raised.value), f"calling the synthesizer without lang does not name it: {raised.value!r}"
+    def synthesizer(*args, **kwargs):
+        built.append((args, kwargs))
+        raise AssertionError(f"render built a synthesizer with no lang: {args} {kwargs}")
+
+    monkeypatch.setattr(voice, "synthesizer", synthesizer)
+
+    with pytest.raises((KeyError, TypeError, ValueError)) as raised:
+        render.cut(tmp_path)
+    assert "lang" in str(raised.value), f"the render's failure does not name lang: {raised.value!r}"
+    assert not built, f"render built {len(built)} synthesizers with no lang, expected none"
     assert not kokoro.calls, f"Kokoro synthesized {len(kokoro.calls)} lines with no lang, expected none"
 
 
