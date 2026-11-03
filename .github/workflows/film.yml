@@ -1,0 +1,59 @@
+# Renders the README's explainer on main and replaces it on the rolling `explainer` release
+# (ADR-0034). A failed render leaves the previous asset up.
+name: film
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/film/**
+      - src/artwork/**
+      - sources/**
+      - contracts/**
+      - anchor/**
+      - orchestrate/prefect.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  # A newer push to main renders a newer film: the older render has nothing left to publish.
+  group: film
+  cancel-in-progress: true
+
+env:
+  UV_LOCKED: "1"
+  UV_PYTHON_INSTALL_MIRROR: https://github.com/astral-sh/python-build-standalone/releases/download
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.13.6"
+          download-from-astral-mirror: false
+          python-version: "3.13"
+          enable-cache: true
+      # The Kokoro files' pinned checksums live in voice.py, so a new pin is a new key.
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .models
+          key: kokoro-${{ hashFiles('src/film/voice.py') }}
+      - run: uv run task film:models
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: uv run playwright install --with-deps chromium
+      - run: uv run task film
+      - name: Publish on the explainer release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release view explainer >/dev/null 2>&1 || gh release create explainer --title "The explainer" --latest=false \
+            --notes "The README's explainer film, rendered from main by the film workflow and replaced on every render (ADR-0034)."
+          gh release upload explainer out/film/declarative-data-platform-explainer.mp4 --clobber

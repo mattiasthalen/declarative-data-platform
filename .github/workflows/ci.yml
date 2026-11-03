@@ -50,4 +50,6 @@ jobs:
           download-from-astral-mirror: false
           python-version: "3.13"
           enable-cache: true
+      # The explainer's stills test draws its page in Chromium (story #39).
+      - run: uv run playwright install --with-deps chromium
       - run: uv run pytest
