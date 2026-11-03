@@ -12,12 +12,15 @@ The throwaway copies hold only the folders ``film.data.build`` reads.
 - ``-k film_zoom_out_counts``: [7], every count on screen is true (review round 1, F4).
 - ``-k film_zoom_out_scales``: EC2, drawn at 100 resources, contracts and anchors (F5).
 - ``-k film_page_keeps_declaration_text``: a declaration holding the page's placeholders (F15).
+- ``-k film_lines_meet_shapes_at_their_edges``: J39-1 point 4, the shapes match the hero's, whose
+  lines run edge to edge (evidence defect: lines drawn from shape centres).
 """
 
 from __future__ import annotations
 
 import contextlib
 import itertools
+import math
 import re
 import shutil
 from pathlib import Path
@@ -234,3 +237,82 @@ def test_film_page_keeps_declaration_text(tmp_path):
         assert not errors, f"the page raised: {errors}"
     script = (render.EXPLAINER / "film.js").read_text(encoding="utf-8")
     assert html.count(script) == 1, f"film.js appears {html.count(script)} times in the page, expected once"
+
+
+# --------------------------------------------------------------------------- J39-1 point 4
+
+# A line's end may sit this far inside a shape, in page pixels: its stroke and floating point.
+EDGE = 1.5
+
+# Every side-shape and zoom-out SVG of the scene: its lines' ends and its shapes, in page pixels.
+# A rect becomes its four corners (rounded corners taken as sharp), a polygon its points, a
+# circle its centre and radius, each through the element's own transform.
+GEOMETRY = """scene => [...document.querySelectorAll(`#${scene} .side svg, #${scene} .zoom svg`)].map(svg => {
+    const at = (el, x, y) => { const p = new DOMPoint(x, y).matrixTransform(el.getScreenCTM()); return [p.x, p.y]; };
+    const shapes = [...svg.querySelectorAll('rect, polygon, circle')].map(el => {
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'circle') {
+            const cx = el.cx.baseVal.value, cy = el.cy.baseVal.value, c = at(el, cx, cy);
+            const e = at(el, cx + el.r.baseVal.value, cy);
+            return {tag, centre: c, radius: Math.hypot(e[0] - c[0], e[1] - c[1])};
+        }
+        if (tag === 'rect') {
+            const x = el.x.baseVal.value, y = el.y.baseVal.value, w = el.width.baseVal.value, h = el.height.baseVal.value;
+            return {tag, points: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map(p => at(el, ...p))};
+        }
+        return {tag, points: [...el.points].map(p => at(el, p.x, p.y))};
+    });
+    const ends = [...svg.querySelectorAll('line')].flatMap(l => [
+        at(l, l.x1.baseVal.value, l.y1.baseVal.value), at(l, l.x2.baseVal.value, l.y2.baseVal.value)]);
+    return {svg: svg.parentElement.className, shapes, ends};
+})"""
+
+
+def depth(point, shape) -> float:
+    """How far inside the shape the point lies; negative outside."""
+    if shape["tag"] == "circle":
+        return shape["radius"] - math.dist(point, shape["centre"])
+    x, y = point
+    corners = shape["points"]
+    inside, nearest = False, math.inf
+    for (ax, ay), (bx, by) in zip(corners, corners[1:] + corners[:1]):
+        if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
+            inside = not inside
+        dx, dy = bx - ax, by - ay
+        t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / ((dx * dx + dy * dy) or 1e-12)))
+        nearest = min(nearest, math.dist(point, (ax + t * dx, ay + t * dy)))
+    return nearest if inside else -nearest
+
+
+def test_film_lines_meet_shapes_at_their_edges():
+    """J39-1 point 4, evidence defect: the hero draws every line edge to edge, from one shape's
+    boundary to the other's. At the end of each layer chapter's close-up and in its zoom-out, when
+    the side shapes and the zoom-out's tiles are fully drawn, no end of a line in a side-shape or
+    zoom-out SVG lies inside a rect, polygon or circle of that SVG; the lit, translucent fills
+    would show the line running through the shape."""
+    moments = []
+    for beat in timeline.beats():
+        if beat["chapter"] in LAYERS and beat["beat"] == "close_up":
+            moments.append((beat["chapter"], "close-up end", beat["end"] - 0.3))
+    moments += [(chapter, "zoom-out", zoom_time(chapter)) for chapter in LAYERS]
+    with opened(render.page(REPO)) as (page, errors):
+        lines_seen = 0
+        for chapter, moment, t in moments:
+            page.evaluate("t => window.__seek(t)", t)
+            assert not errors, f"the page raised at the {chapter} {moment}: {errors}"
+            svgs = page.evaluate(GEOMETRY, chapter)
+            assert svgs, f"the {chapter} scene draws no side-shape or zoom-out SVG at its {moment}"
+            for svg in svgs:
+                lines_seen += len(svg["ends"]) // 2
+                inside = [
+                    (tuple(round(c, 1) for c in end), shape["tag"], round(depth(end, shape), 1))
+                    for end in svg["ends"]
+                    for shape in svg["shapes"]
+                    if depth(end, shape) > EDGE
+                ]
+                assert not inside, (
+                    f"at the {chapter} {moment} (t={t:.1f}s), {len(inside)} line ends in the "
+                    f"'{svg['svg']}' SVG lie inside one of its shapes, not on its edge as the hero "
+                    f"draws them (end, shape, px inside): {inside[:6]}"
+                )
+        assert lines_seen, "no side shape or zoom-out draws a line; the test checks nothing"
