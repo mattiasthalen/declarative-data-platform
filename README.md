@@ -29,6 +29,9 @@ The staged models, one per contract, with their primary keys.
 <!-- erd:conform begin: written by `uv run conform generate` -->
 ```mermaid
 erDiagram
+  adventure_works__product_subcategories {
+    bigint product_subcategory_id PK
+  }
   adventure_works__products {
     bigint product_id PK
   }
