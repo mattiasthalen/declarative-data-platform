@@ -9,11 +9,17 @@ last caption ends); ``synthesize(text)`` returns a numpy array at 24 kHz.
 Every test here stubs the synthesizer and none needs the Kokoro files (EC4).
 
 - ``-k film_voice_guards``: AC10.
+- ``-k film_voice_question``: AC11 (#49). ``film.voice.synthesizer(models, voice, speed, lang)``
+  returns a callable that speaks a question inside a line (text up to and including a ``?`` with
+  more after it) apart from the rest, with 0.6 s of silence between; Kokoro is stubbed.
 """
 
 from __future__ import annotations
 
 import re
+import sys
+import types
+from typing import ClassVar
 
 import pytest
 
@@ -99,3 +105,76 @@ def test_film_voice_guards(tmp_path):
     synthesizer whose line runs past the next cue."""
     verify_refuses_bad_models(tmp_path)
     place_refuses_an_overrun()
+
+
+class SpokenKokoro:
+    """Stands in for ``kokoro_onnx.Kokoro``: records each text ``create`` is given and returns
+    ``len(text) * 0.01`` s of ones at 24 kHz."""
+
+    texts: ClassVar[list[str]] = []
+
+    def __init__(self, model, voices, *args, **kwargs):
+        pass
+
+    def create(self, text, voice=None, speed=1.0, lang="en-us", **kwargs):
+        import numpy as np
+
+        SpokenKokoro.texts.append(text)
+        return np.ones(round(len(text) * 0.01 * RATE), dtype=np.float32), RATE
+
+
+@pytest.fixture
+def spoken(monkeypatch, tmp_path):
+    """The synthesizer over a stubbed Kokoro and a stubbed ``voice.verify``: no model files."""
+    SpokenKokoro.texts = []
+    module = types.ModuleType("kokoro_onnx")
+    module.Kokoro = SpokenKokoro
+    monkeypatch.setitem(sys.modules, "kokoro_onnx", module)
+    monkeypatch.setattr(voice, "verify", lambda models: None)
+    return voice.synthesizer(tmp_path, "bm_lewis", 1.0, "en-gb")
+
+
+def spoken_length(text: str) -> int:
+    return round(len(text) * 0.01 * RATE)
+
+
+QUESTION_PAUSE = round(0.6 * RATE)
+
+
+def test_film_voice_question_pauses(spoken):
+    """AC11 (#49): a question inside a line is spoken apart from the rest, with 0.6 s of silence
+    between them."""
+    import numpy as np
+
+    question, rest = "Why?", "A contract is a promise."
+    audio = np.asarray(spoken(f"{question} {rest}"))
+    assert SpokenKokoro.texts == [question, rest], f"Kokoro's create was given {SpokenKokoro.texts}, expected {[question, rest]}"
+
+    asked, answered = spoken_length(question), spoken_length(rest)
+    expected = asked + QUESTION_PAUSE + answered
+    assert abs(len(audio) - expected) <= 1, f"the line is {len(audio)} samples, expected {expected} (the two parts and 0.6 s)"
+    pause = audio[asked : asked + QUESTION_PAUSE]
+    assert not np.any(pause), f"{np.count_nonzero(pause)} samples in the 0.6 s after the question are not silent"
+    assert np.all(audio[:asked] == 1), "the question's audio does not open the line"
+    assert np.all(audio[asked + QUESTION_PAUSE : asked + QUESTION_PAUSE + answered - 1] == 1), "the rest's audio does not follow the pause"
+
+
+def test_film_voice_question_none(spoken):
+    """AC11 (#49): a line with no question is spoken in one call and returned as it was spoken."""
+    import numpy as np
+
+    line = "Ingest is where data arrives."
+    audio = np.asarray(spoken(line))
+    assert SpokenKokoro.texts == [line], f"Kokoro's create was given {SpokenKokoro.texts}, expected {[line]}"
+    assert len(audio) == spoken_length(line), f"the line is {len(audio)} samples, expected {spoken_length(line)}"
+    assert np.all(audio == 1), "the line's audio is not what Kokoro returned"
+
+
+def test_film_voice_question_at_end(spoken):
+    """AC11 (#49): a line that ends on its question is spoken in one call, with no silence added."""
+    import numpy as np
+
+    line = "Where does the data go?"
+    audio = np.asarray(spoken(line))
+    assert SpokenKokoro.texts == [line], f"Kokoro's create was given {SpokenKokoro.texts}, expected {[line]}"
+    assert len(audio) == spoken_length(line), f"the line is {len(audio)} samples, expected {spoken_length(line)}, no added silence"
