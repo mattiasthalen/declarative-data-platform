@@ -14,6 +14,9 @@ The throwaway copies hold only the folders ``film.data.build`` reads.
 - ``-k film_page_keeps_declaration_text``: a declaration holding the page's placeholders (F15).
 - ``-k film_lines_meet_shapes_at_their_edges``: J39-1 point 4, the shapes match the hero's, whose
   lines run edge to edge (evidence defect: lines drawn from shape centres).
+- ``-k film_shapes_build_in_modelling_order``: J39-1 point 4, an anchor model is built anchors,
+  then attributes, then the tie, and a star entities, then the bridge, then the spokes (evidence
+  defect: built in the wrong order).
 """
 
 from __future__ import annotations
@@ -316,3 +319,185 @@ def test_film_lines_meet_shapes_at_their_edges():
                     f"draws them (end, shape, px inside): {inside[:6]}"
                 )
         assert lines_seen, "no side shape or zoom-out draws a line; the test checks nothing"
+
+
+# --------------------------------------------------------------------------- J39-1 point 4, build order
+
+# A shape counts as shown once its opacity, its ancestors' multiplied in, passes this.
+SHOWN = 0.5
+# How often the build is sampled, in seconds: once a frame at 30 fps.
+FRAME = 1 / 30
+# How near a shape's boundary a line's end lies when the line joins that shape, in page pixels.
+JOINS = 3.0
+
+# Each rect, polygon, circle and line under the selector: its geometry in page pixels (as
+# GEOMETRY), its fill, the index of the zoom-out tile holding it (or -1), and how opaque it is.
+SHAPES = """selector => [...document.querySelectorAll(selector)].flatMap(svg =>
+    [...svg.querySelectorAll('rect, polygon, circle, line')]).map(el => {
+    const at = (x, y) => { const p = new DOMPoint(x, y).matrixTransform(el.getScreenCTM()); return [p.x, p.y]; };
+    const tag = el.tagName.toLowerCase();
+    let opacity = el.getClientRects().length ? 1 : 0;
+    for (let e = el; e && e.nodeType === 1; e = e.parentElement) {
+        const style = getComputedStyle(e);
+        if (style.display === 'none' || style.visibility === 'hidden') opacity = 0;
+        opacity *= parseFloat(style.opacity);
+    }
+    const tiles = [...document.querySelectorAll('.ztile')];
+    const shape = {tag, fill: el.getAttribute('fill'), opacity, tile: tiles.indexOf(el.closest('.ztile'))};
+    if (tag === 'circle') {
+        const cx = el.cx.baseVal.value, cy = el.cy.baseVal.value, c = at(cx, cy), e = at(cx + el.r.baseVal.value, cy);
+        return {...shape, centre: c, radius: Math.hypot(e[0] - c[0], e[1] - c[1])};
+    }
+    if (tag === 'rect') {
+        const x = el.x.baseVal.value, y = el.y.baseVal.value, w = el.width.baseVal.value, h = el.height.baseVal.value;
+        return {...shape, points: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map(p => at(...p))};
+    }
+    if (tag === 'line') {
+        return {...shape, ends: [at(el.x1.baseVal.value, el.y1.baseVal.value), at(el.x2.baseVal.value, el.y2.baseVal.value)]};
+    }
+    return {...shape, points: [...el.points].map(p => at(p.x, p.y))};
+})"""
+
+
+def build(page, selector: str, start: float, end: float) -> list[dict]:
+    """Each shape under the selector as drawn at ``end``, with ``first``: the first sampled time,
+    from ``start`` a frame at a time, at which it is shown (None if never)."""
+    shapes, first = None, []
+    steps = int((end - start) / FRAME)
+    for i in range(steps + 1):
+        t = start + i * FRAME
+        page.evaluate("t => window.__seek(t)", t)
+        seen = page.evaluate(SHAPES, selector)
+        if first == []:
+            first = [None] * len(seen)
+        assert len(seen) == len(first), f"'{selector}' draws {len(seen)} shapes at t={t:.2f}s, {len(first)} before"
+        for k, shape in enumerate(seen):
+            if first[k] is None and shape["opacity"] > SHOWN:
+                first[k] = t
+        shapes = seen
+    for shape, t in zip(shapes, first):
+        shape["first"] = t
+    return shapes
+
+
+def joins(point, shape) -> bool:
+    return abs(depth(point, shape)) <= JOINS
+
+
+def concentric(a: dict, b: dict) -> bool:
+    return a is not b and math.dist(a["centre"], b["centre"]) < 0.5 and abs(a["radius"] - b["radius"]) > 0.5
+
+
+def anchor_model(shapes: list[dict]) -> dict[str, list[dict]]:
+    """The anchor model's shapes by role, read from their kind and geometry: a rect is an anchor,
+    a circle drawn with a smaller one inside it an attribute (the outer one), the polygon the tie;
+    a line with an end on the tie is the tie's, a line with an end on an attribute that attribute's."""
+    circles = [s for s in shapes if s["tag"] == "circle"]
+    anchors = [s for s in shapes if s["tag"] == "rect"]
+    attributes = [c for c in circles if any(concentric(c, o) and o["radius"] < c["radius"] for o in circles)]
+    ties = [s for s in shapes if s["tag"] == "polygon"]
+    tie_lines, attribute_lines = [], []
+    for line in (s for s in shapes if s["tag"] == "line"):
+        if any(joins(end, tie) for end in line["ends"] for tie in ties):
+            tie_lines.append(line)
+        else:
+            line["attribute"] = next(
+                (a for a in attributes for end in line["ends"] if joins(end, a)), None
+            )
+            attribute_lines.append(line)
+    return {"anchors": anchors, "attributes": attributes, "ties": ties,
+            "tie lines": tie_lines, "attribute lines": attribute_lines}
+
+
+def firsts(shapes: list[dict]) -> list[float]:
+    return sorted(s["first"] for s in shapes)
+
+
+def right_side(chapter: str) -> str:
+    return f"#{chapter} .side.right svg"
+
+
+def beat(chapter: str, name: str) -> dict:
+    (found,) = [b for b in timeline.beats() if b["chapter"] == chapter and b["beat"] == name]
+    return found
+
+
+def test_film_shapes_build_in_modelling_order_anchor_model():
+    """J39-1 point 4, evidence defect: an anchor model is built anchors first, then described,
+    then related. Sampled a frame at a time through the integrate close-up, a shape counting as
+    shown once more than half opaque, its right side shape, the anchor model, shows every anchor
+    before any attribute, each attribute no later than its line to its anchor, every attribute and
+    attribute line before the tie, and the tie before its lines to the anchors."""
+    with opened(render.page(REPO)) as (page, errors):
+        close = beat("integrate", "close_up")
+        shapes = build(page, right_side("integrate"), close["start"], close["end"])
+        assert not errors, f"the page raised in the integrate close-up: {errors}"
+        never = [(s["tag"], s["fill"]) for s in shapes if s["first"] is None]
+        assert not never, f"shapes of the anchor model never show in the integrate close-up: {never}"
+        roles = anchor_model(shapes)
+        for role in ("anchors", "attributes", "ties", "tie lines", "attribute lines"):
+            assert roles[role], f"the integrate close-up's anchor model draws no {role}: {[s['tag'] for s in shapes]}"
+        assert not [s for s in roles["attribute lines"] if s["attribute"] is None], (
+            "a line of the anchor model joins neither the tie nor an attribute"
+        )
+        when = {role: firsts(found) for role, found in roles.items() if role != "attribute lines"}
+        when["attribute lines"] = firsts(roles["attribute lines"])
+        order = f"first shown (s) by role: {when}"
+        assert max(when["anchors"]) < min(when["attributes"]), (
+            f"an attribute of the anchor model shows before an anchor; the anchors come first. {order}"
+        )
+        early = [(line["first"], line["attribute"]["first"]) for line in roles["attribute lines"]
+                 if line["first"] < line["attribute"]["first"]]
+        assert not early, f"attribute lines show before their attributes (line, attribute): {early}. {order}"
+        assert max(when["attributes"] + when["attribute lines"]) < min(when["ties"]), (
+            f"the tie shows before the anchors are described by their attributes. {order}"
+        )
+        assert max(when["ties"]) < min(when["tie lines"]), (
+            f"a line to the tie shows before the tie. {order}"
+        )
+
+
+def test_film_shapes_build_in_modelling_order_star():
+    """J39-1 point 4, evidence defect: a star is built entities first, then the bridge, then the
+    spokes joining them. Sampled a frame at a time through the serve close-up, its right side
+    shape, the star, shows every entity (rect) before the bridge (polygon), and the bridge before
+    any spoke (line)."""
+    with opened(render.page(REPO)) as (page, errors):
+        close = beat("serve", "close_up")
+        shapes = build(page, right_side("serve"), close["start"], close["end"])
+        assert not errors, f"the page raised in the serve close-up: {errors}"
+        never = [(s["tag"], s["fill"]) for s in shapes if s["first"] is None]
+        assert not never, f"shapes of the star never show in the serve close-up: {never}"
+        entities = [s for s in shapes if s["tag"] == "rect"]
+        bridges = [s for s in shapes if s["tag"] == "polygon"]
+        spokes = [s for s in shapes if s["tag"] == "line"]
+        assert entities and bridges and spokes, f"the serve close-up's star lacks a role: {[s['tag'] for s in shapes]}"
+        order = (f"first shown (s): entities {firsts(entities)}, bridge {firsts(bridges)}, "
+                 f"spokes {firsts(spokes)}")
+        assert max(firsts(entities)) < min(firsts(bridges)), f"the bridge shows before every entity has. {order}"
+        assert max(firsts(bridges)) < min(firsts(spokes)), f"a spoke shows before the bridge. {order}"
+
+
+def test_film_shapes_build_in_modelling_order_zoom_out():
+    """J39-1 point 4, evidence defect: an anchor is drawn before it is described. Sampled a frame
+    at a time through the integrate zoom-out, each tile's attribute circles (those centred outside
+    its square) show after the square."""
+    with opened(render.page(REPO)) as (page, errors):
+        zoom = beat("integrate", "zoom_out")
+        shapes = build(page, "#integrate .zoom svg", zoom["start"], zoom["end"])
+        assert not errors, f"the page raised in the integrate zoom-out: {errors}"
+        tiles = sorted({s["tile"] for s in shapes if s["tile"] >= 0})
+        assert tiles, "the integrate zoom-out draws no tiles"
+        checked = 0
+        for tile in tiles:
+            mine = [s for s in shapes if s["tile"] == tile]
+            (square,) = [s for s in mine if s["tag"] == "rect"]
+            circles = [s for s in mine if s["tag"] == "circle" and depth(s["centre"], square) < 0]
+            assert square["first"] is not None, f"the integrate zoom-out's anchor {tile} never shows"
+            for circle in circles:
+                checked += 1
+                assert circle["first"] is not None and circle["first"] > square["first"], (
+                    f"an attribute circle of the integrate zoom-out's anchor {tile} shows at "
+                    f"{circle['first']}s, its square at {square['first']:.2f}s: the attributes come after"
+                )
+        assert checked, "no anchor in the integrate zoom-out has an attribute circle; the test checks nothing"
