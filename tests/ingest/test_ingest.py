@@ -34,7 +34,7 @@ import duckdb
 import pytest
 import yaml
 
-from harness import REPO, product
+from harness import REPO, SUBCATEGORIES, product, subcategory
 
 LAYOUT = re.compile(r"^(?P<resource>[^/]+)/date=\d{4}-\d{2}-\d{2}/hour=\d{2}/[^/]+\.parquet$")
 REPO_SOURCE = REPO / "sources" / "adventure_works"
@@ -253,6 +253,8 @@ def test_repo_declarations_land_both_resources(feed, work, lake):
     transactions = [_transaction(1, "2013-07-31T00:00:00"), _transaction(2, "2014-08-01T00:00:00", kind="W")]
     feed.routes["/Products"] = lambda query: (200, {"value": products})
     feed.routes["/TransactionHistories"] = lambda query: (200, {"value": transactions})
+    # Story #6 declares a third resource; test_product_subcategories holds what it lands.
+    feed.routes["/ProductSubcategories"] = lambda query: (200, {"value": [subcategory(1, "Mountain Bikes")]})
     shutil.copytree(REPO_SOURCE, work / "sources" / "adventure_works")
     copied = work / "sources" / "adventure_works" / "_source.yaml"
     copied.write_text(yaml.safe_dump(source_config(f"{feed.base}/"), sort_keys=False))
@@ -260,7 +262,7 @@ def test_repo_declarations_land_both_resources(feed, work, lake):
     assert ingest() == 0
 
     files = landed(lake)
-    assert set(files) == {"adventure_works__products", "adventure_works__transaction_histories"}
+    assert {"adventure_works__products", "adventure_works__transaction_histories"} <= set(files)
     assert sorted((r[2] for r in rows(files["adventure_works__products"])), key=str) == sorted(products, key=str)
     got = [r[2] for r in rows(files["adventure_works__transaction_histories"])]
     assert sorted(got, key=str) == sorted(transactions, key=str)
@@ -270,6 +272,33 @@ def test_repo_declarations_land_both_resources(feed, work, lake):
         if urlsplit(p).path == "/TransactionHistories"
     ]
     assert filters and filters[0].startswith("ModifiedDate ge "), filters
+
+
+def test_product_subcategories(feed, work, lake):
+    """Story #6 AC13 ([13]): the repo's sources/adventure_works/product_subcategories.yaml pulls
+    ProductSubcategories whole (no incremental cursor), and `ingest` lands every row of it as
+    adventure_works__product_subcategories, beside the other resources, exit 0."""
+    declared = REPO_SOURCE / "product_subcategories.yaml"
+    assert declared.is_file(), f"{declared.relative_to(REPO)} is not declared"
+    entry_ = yaml.safe_load(declared.read_text())
+    assert entry_["endpoint"]["path"] == "ProductSubcategories", entry_
+    assert "incremental" not in entry_["endpoint"] and "incremental" not in entry_, "subcategories are pulled whole"
+
+    subcategories = [subcategory(1, "Mountain Bikes"), subcategory(2, "Road Bikes"), subcategory(37, "Touring Frames")]
+    feed.routes["/Products"] = lambda query: (200, {"value": [product(1, "SC-0001", "One", subcategory=1)]})
+    feed.routes["/TransactionHistories"] = lambda query: (200, {"value": [_transaction(1, "2013-07-31T00:00:00")]})
+    feed.routes["/ProductSubcategories"] = lambda query: (200, {"value": subcategories})
+    shutil.copytree(REPO_SOURCE, work / "sources" / "adventure_works")
+    copied = work / "sources" / "adventure_works" / "_source.yaml"
+    copied.write_text(yaml.safe_dump(source_config(f"{feed.base}/"), sort_keys=False))
+
+    assert ingest() == 0
+
+    files = landed(lake)
+    assert SUBCATEGORIES in files, f"nothing landed as {SUBCATEGORIES}: {sorted(files)}"
+    got = [r[2] for r in rows(files[SUBCATEGORIES])]
+    assert sorted(got, key=str) == sorted(subcategories, key=str)
+    assert len({r[0] for r in rows(files[SUBCATEGORIES])}) == 1, "the subcategories landed as more than one load"
 
 
 def test_no_resource_named_in_code():

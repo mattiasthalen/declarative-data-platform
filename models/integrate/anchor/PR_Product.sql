@@ -7,6 +7,7 @@
     "source": "adventure_works__products",
     "changed_at": "modified_date",
     "key_column": "product_number",
+    "key_type": "varchar(25)",
     "key_view": "key_PR_Product_NUM",
     "identifier_mnemonic": "PR_NUM",
     "identifier_value": "PR_NUM_Product_ProductNumber",

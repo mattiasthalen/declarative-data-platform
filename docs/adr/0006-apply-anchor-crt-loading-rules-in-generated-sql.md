@@ -30,3 +30,7 @@ crt has no way to assert that an attribute has no value, so a null retracts what
 Integrate is only ever appended to. A full refresh would renumber identities against the tables it replaces, so the integrate models set `full_refresh: false`: dbt ignores `--full-refresh` for them and builds incrementally.
 
 The `ic_` views check duplicate keys and more than one reliable assertion at one time. Roenbaeck's crt checks for temporal duplicates and restatements are not generated yet; the load skips restatements, so those checks would guard the load rather than the data.
+
+## Addendum 2026-11-03
+
+These rules load ties too: a tie whose only identifier role is one anchor's is loaded as an attribute of that anchor, the other role's identity its value ([ADR-0036](0036-load-a-to-one-tie-as-an-attribute-of-its-identifier-role.md)).

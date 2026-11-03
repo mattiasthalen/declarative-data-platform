@@ -38,4 +38,8 @@ Nygard's format: Context, Decision, Consequences, with a Status. One decision pe
 | [0033](0033-expose-the-time-traveling-perspective-as-a-duckdb-table-macro-taking-a-changing-and-a-positing-time.md) | Expose the time-traveling perspective as a DuckDB table macro taking a changing and a positing time | Accepted (2026-11-02) |
 | [0034](0034-render-the-explainer-in-ci-and-publish-it-on-a-rolling-release.md) | Render the explainer in CI and publish it on a rolling release | Accepted (2026-11-02); partly superseded by ADR-0040 |
 | [0035](0035-synthesize-the-explainers-narration-locally-with-kokoro.md) | Synthesize the explainer's narration locally with Kokoro-82M | Accepted (2026-11-02) |
+| [0036](0036-load-a-to-one-tie-as-an-attribute-of-its-identifier-role.md) | Load a to-one tie as an attribute of its identifier role | Accepted (2026-11-03) |
+| [0037](0037-resolve-a-ties-reference-through-the-other-anchors-key-and-skip-one-not-yet-known.md) | Resolve a tie's reference through the other anchor's key, and skip one not yet known | Accepted (2026-11-03) |
+| [0038](0038-split-a-staged-bridge-at-every-change-of-what-it-reaches-over-to-one-ties.md) | Split a staged bridge at every change of what it reaches over to-one ties | Accepted (2026-11-03) |
+| [0039](0039-backfill-a-ties-first-version-in-serve-as-an-attributes.md) | Backfill a tie's first version in serve as an attribute's | Accepted (2026-11-03) |
 | [0040](0040-publish-the-explainer-on-github-pages.md) | Publish the explainer on GitHub Pages | Accepted (2026-11-03) |

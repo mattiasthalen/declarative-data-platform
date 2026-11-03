@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 import replay
+import tie_story
 from harness import (
     ATTRIBUTES,
     PIT,
@@ -101,14 +102,22 @@ def simulated(make_workspace) -> SimulatedLake:
     if len(files) != BUILDS:
         lake.failure = f"uv run simulate wrote {len(files)} files, expected {BUILDS}: {files}"
         return lake
+    # Story #6: the other resources' loads (the subcategories) land with the first Products load
+    # at or after them, and any after the last with the last.
+    others = sorted(
+        (p for p in staging.rglob("*.parquet") if p.relative_to(staging).parts[0] != RESOURCE), key=_load_id_of
+    )
     step = ws.generate()
     if step.returncode != 0:
         lake.failure = f"task generate exited {step.returncode}:\n{tail(step.output)}"
         return lake
     for n, source in enumerate(files):
-        target = ws.lake / source.relative_to(staging)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(source, target)
+        landing = [p for p in others if n == len(files) - 1 or _load_id_of(p) <= _load_id_of(source)]
+        others = [p for p in others if p not in landing]
+        for path in [*landing, source]:
+            target = ws.lake / path.relative_to(staging)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(path, target)
         step = ws.build()
         if step.returncode != 0:
             lake.failure = f"dbt build after load {n} exited {step.returncode}:\n{tail(step.output)}"
@@ -501,3 +510,53 @@ def test_tt_known_at_each_build(simulated, tmp_path):
                 )
     assert not wrong, f"{len(wrong)} mismatches:\n" + "\n".join(wrong[:20])
     assert compared > 1000, f"only {compared} rows compared: the check proves little"
+
+
+# --------------------------------------------------------------------------- story #6: the split bridge
+
+
+def test_bridge_one_row_per_instant_on_simulated_lake(simulated):
+    """Story #6 AC1: after the seed-7 lake's last build, bridge__product, split by the tie, holds for every
+    product exactly one row for any instant from 0001-01-01 to 9999-12-31."""
+    snap = simulated.snap(BUILDS - 1)
+    problems = tie_story.tiling_problems(snap)
+    assert not problems, f"{len(problems)} problems:\n" + "\n".join(problems[:20])
+    tied = snap.sql(
+        "select count(*) from serve__uss_staging.bridge__product "
+        "where _key__product_subcategory not in ('[not available]', '[not applicable]')"
+    )[0][0]
+    assert tied, "no bridge__product row of the simulated lake names a subcategory: the split is not exercised"
+
+
+def test_bridge_pit_keys_cover_on_simulated_lake(simulated):
+    """Story #6 AC2: after the seed-7 lake's last build, every bridge__product row's PIT keys name versions
+    valid for its whole interval."""
+    problems = tie_story.pit_key_problems(simulated.snap(BUILDS - 1))
+    assert not problems, f"{len(problems)} problems:\n" + "\n".join(problems[:20])
+
+
+SERVED = (
+    ("serve__uss", "product"),
+    ("serve__uss", "product_subcategory"),
+    ("serve__uss", "_bridge"),
+    ("serve__uss_staging", "bridge__product"),
+)
+
+
+def test_incremental_equals_full(simulated):
+    """Story #6 AC11, EC6: bridge__product, product, product_subcategory and _bridge are row-identical after the
+    seed-7 run built load by load and after a `dbt build --full-refresh` over the same lake."""
+    incremental = simulated.snap(BUILDS - 1)
+    missing = [f"{s}.{t}" for s, t in SERVED if t not in incremental.relations(s)]
+    assert not missing, f"the simulated lake's last build has no {missing}"
+    step = simulated.ws.build("--full-refresh")
+    assert step.returncode == 0, f"dbt build --full-refresh exited {step.returncode}:\n{tail(step.output)}"
+    full = simulated.ws.snapshot("full-refresh", step)
+    wrong = []
+    for schema, table in SERVED:
+        query = f"select * from {schema}.{q(table)} order by all"
+        one, other = incremental.sql(query), full.sql(query)
+        assert one, f"{schema}.{table} is empty: the comparison proves nothing"
+        if one != other:
+            wrong.append(f"{schema}.{table}: {len(one)} rows incrementally, {len(other)} after a full refresh")
+    assert not wrong, "\n".join(wrong)

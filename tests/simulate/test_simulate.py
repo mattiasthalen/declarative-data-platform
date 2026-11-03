@@ -29,9 +29,12 @@ from pathlib import Path
 
 import pytest
 
-from harness import REPO, RESOURCE, load_id, product, write_load
+from harness import REPO, RESOURCE, SUBCATEGORIES, load_id, product, write_load
 
 SNAPSHOT = REPO / "src" / "simulate" / "adventure_works__products.jsonl"
+# Story #6: the committed ProductSubcategories snapshot, landed beside the Products one (A20).
+SUBCATEGORY_SNAPSHOT = REPO / "src" / "simulate" / f"{SUBCATEGORIES}.jsonl"
+SUBCATEGORY_FIELDS = {"ProductSubcategoryId", "ProductCategoryId", "Name", "Rowguid", "ModifiedDate"}
 FIRST_LOAD = datetime(2014, 2, 9, tzinfo=UTC)
 BUSINESS = ("Name", "ProductLine", "Color", "SellStartDate", "SellEndDate", "DiscontinuedDate")
 LANDED = {"data", "_dlt_load_id", "_dlt_id"}
@@ -195,8 +198,9 @@ def diff(history: list[Load]) -> list[dict]:
 
 
 def classify(before: dict, after: dict, day: date) -> str:
-    """The kind of one product's change, from its row before and after; ``unknown`` if none fits."""
-    attributes = [k for k in BUSINESS if before.get(k) != after.get(k)]
+    """The kind of one product's change, from its row before and after; ``unknown`` if none fits.
+    A subcategory moved or lost (story #6) is an edit or a source null of ``ProductSubcategoryId``."""
+    attributes = [k for k in (*BUSINESS, "ProductSubcategoryId") if before.get(k) != after.get(k)]
     if not attributes:
         return "unknown"
     was, now = modified(before), modified(after)
@@ -241,7 +245,8 @@ def test_empty_lake_lands_snapshot_then_loads(monkeypatch, capsys, tmp_path):
     assert code == 0, err
     paths = files(lake)
     assert len(paths) == 7, paths
-    assert len(every_file(lake)) == 7, every_file(lake)
+    beside = [p for p in every_file(lake) if p.relative_to(lake).parts[0] != SUBCATEGORIES]
+    assert len(beside) == 7, beside
     history = loads(lake)
     assert len({load.load_id for load in history}) == 7, [load.load_id for load in history]
     for k, load in enumerate(history):
@@ -300,11 +305,68 @@ def test_change_kinds(seven):
         assert 0.03 <= share <= 0.07, f"load {found['load'].load_id} changed {changes} of {len(before.rows)}"
         for number, (previous, row, kind) in found["changed"].items():
             moved = {k for k in row if row.get(k) != previous.get(k)}
-            assert moved <= set(BUSINESS) | {"ModifiedDate"}, f"{number} changed {moved}"
+            assert moved <= set(BUSINESS) | {"ModifiedDate", "ProductSubcategoryId"}, f"{number} changed {moved}"
             assert kind != "unknown", f"{number} changed in no known way: {previous} -> {row}"
         total += found["kinds"]
     missing = [kind for kind in KINDS if not total[kind]]
     assert not missing, f"seed 7 never made a {missing}; it made {dict(total)}"
+
+    # Story #6 AC14: a product moves subcategory, a product loses it, a subcategory is renamed.
+    subcategory_kinds = Counter()
+    known = {row["ProductSubcategoryId"] for load in subcategory_loads(lake) for row in load.rows}
+    for found in diff(history):
+        day = found["load"].day
+        for number, (previous, row, _) in found["changed"].items():
+            was, now = previous.get("ProductSubcategoryId"), row.get("ProductSubcategoryId")
+            if was is None or was == now:
+                continue
+            kind = "lose subcategory" if now is None else "move subcategory"
+            if modified(row) == day:
+                subcategory_kinds[kind] += 1
+            if now is not None:
+                assert now in known, f"{number} moved to subcategory {now}, which never landed"
+    subcategory_kinds["rename subcategory"] = len(renames(lake, history))
+    missing = [k for k in ("move subcategory", "lose subcategory", "rename subcategory") if not subcategory_kinds[k]]
+    assert not missing, f"seed 7 never made a {missing} (with ModifiedDate moved); it made {dict(subcategory_kinds)}"
+
+
+def test_change_kinds_subcategory_snapshot(seven):
+    """Story #6 AC14 ([14]): an empty lake's first subcategories load is the committed snapshot, the 37
+    ProductSubcategories rows the feed served, in the landed shape."""
+    lake, code = seven
+    assert code == 0, f"simulate --seed 7 --loads 6 ended with {code}"
+    assert SUBCATEGORY_SNAPSHOT.is_file(), f"no committed {SUBCATEGORY_SNAPSHOT.relative_to(REPO)}"
+    rows = [json.loads(line) for line in SUBCATEGORY_SNAPSHOT.read_text().splitlines() if line.strip()]
+    assert len(rows) == 37, f"the subcategory snapshot holds {len(rows)} rows, the feed 37"
+    assert all(set(row) == SUBCATEGORY_FIELDS for row in rows), "a snapshot row has other fields than the feed's"
+    landed = subcategory_loads(lake)
+    assert landed, f"simulate landed no {SUBCATEGORIES} load"
+    for load in landed:
+        assert set(load.columns) == LANDED, f"{load.path.name} has columns {load.columns}"
+        assert load.path.relative_to(lake).parts[0] == SUBCATEGORIES, load.path
+    assert canonical(landed[0].rows) == canonical(rows)
+
+
+def subcategory_loads(lake: Path) -> list["Load"]:
+    """Every ProductSubcategories load in the lake, in load-id order."""
+    folder = lake / SUBCATEGORIES
+    paths = sorted(folder.rglob("*.parquet")) if folder.exists() else []
+    return sorted((Load(p) for p in paths), key=lambda load: load.number)
+
+
+def renames(lake: Path, history: list["Load"]) -> list[tuple]:
+    """(subcategory id, old name, new name) of each subcategory renamed while a product was in it, from the
+    subcategory loads in order: a name unlike the one last landed for that id."""
+    referenced = {row.get("ProductSubcategoryId") for load in history for row in load.rows}
+    names: dict = {}
+    found = []
+    for load in subcategory_loads(lake):
+        for row in load.rows:
+            ident, name = row["ProductSubcategoryId"], row["Name"]
+            if ident in names and names[ident] != name and ident in referenced:
+                found.append((ident, names[ident], name))
+            names[ident] = name
+    return found
 
 
 # --------------------------------------------------------------------------- AC4
@@ -329,7 +391,11 @@ def test_kind_shapes(seven):
             else:
                 pytest.fail(f"{number} in load {load.load_id}: ModifiedDate {was} -> {now} fits no kind")
             if kind == "source null":
-                nulled = [k for k in BUSINESS if previous.get(k) is not None and row.get(k) is None]
+                nulled = [
+                    k
+                    for k in (*BUSINESS, "ProductSubcategoryId")
+                    if previous.get(k) is not None and row.get(k) is None
+                ]
                 assert nulled, (number, previous, row)
         for number, row in found["new"].items():
             assert number not in found["seen_numbers"], number

@@ -1,0 +1,35 @@
+version: 2
+models:
+- name: adventure_works__product_subcategories
+  description: One row per subcategory, as of the load that brought it.
+  columns:
+  - name: product_subcategory_id
+    description: The source's own key for the subcategory; products name their subcategory by it.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+    - not_null:
+        config:
+          severity: warn
+  - name: product_category_id
+    description: The category the subcategory belongs to.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+  - name: name
+    description: The subcategory's name.
+  - name: rowguid
+    description: The source's row identifier.
+  - name: modified_date
+    description: When the source last changed the row.
+    data_tests:
+    - cast_failed:
+        config:
+          severity: warn
+    - not_null:
+        config:
+          severity: warn
+  - name: _contract__cast_failed
+    description: The properties whose non-null source value failed its cast in this row.

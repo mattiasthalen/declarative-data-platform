@@ -63,6 +63,7 @@ SCHEMA_METADATA = {
     "now": "now()",
 }
 ATTRIBUTE_METADATA = {"capsule": "integrate", "restatable": "false", "idempotent": "true", "assertive": "false"}
+TIE_METADATA = {"capsule": "integrate", "restatable": "false", "idempotent": "true", "assertive": "false"}
 ANCHOR_METADATA = {"capsule": "integrate", "generator": "true"}
 
 
@@ -89,7 +90,7 @@ def texts(node) -> list[str]:
 
 
 def checked(value, pattern: re.Pattern, what: str) -> str:
-    if not isinstance(value, str) or not pattern.match(value):
+    if not isinstance(value, str) or not pattern.fullmatch(value):
         raise ModelError(f"{what} {value!r} does not match {pattern.pattern}")
     return value
 
@@ -155,6 +156,41 @@ class Anchor:
         return f"key_{self.name}_{self.route}"
 
 
+@dataclass(frozen=True)
+class Tie:
+    """A tie whose only identifier role is one anchor's, loaded by that anchor's mapping as an
+    attribute of it whose value is the other role's identity (ADR-0036)."""
+
+    owner: Anchor
+    owner_role: str
+    other: Anchor
+    other_role: str
+    other_key: Attribute
+    time_range: str
+    description: str
+    column: str
+
+    @property
+    def name(self) -> str:
+        return f"{self.owner.mnemonic}_{self.owner_role}_{self.other.mnemonic}_{self.other_role}"
+
+    @property
+    def posit(self) -> str:
+        return f"{self.name}_Posit"
+
+    @property
+    def annex(self) -> str:
+        return f"{self.name}_Annex"
+
+    @property
+    def identity_column(self) -> str:
+        return f"{self.owner.id}_{self.owner_role}"
+
+    @property
+    def value_column(self) -> str:
+        return f"{self.other.id}_{self.other_role}"
+
+
 def as_list(value) -> list:
     if value is None:
         return []
@@ -215,6 +251,80 @@ def read(root: Path) -> tuple[dict, list[tuple[Anchor, list[Attribute], Attribut
     return schema, anchors
 
 
+ROLE = re.compile(r"^[a-z][A-Za-z0-9]*$")
+
+
+def source_columns(root: Path, source: str) -> set[str]:
+    """The columns the contract staging ``source`` declares."""
+    for path in sorted((root / "contracts").glob("*/*.yaml")):
+        objects = safe_yaml(path).get("schema") or []
+        if objects and objects[0].get("name") == source:
+            return {str(p.get("name")) for p in objects[0].get("properties") or []}
+    raise ModelError(f"no contract in contracts/ stages {source}")
+
+
+def ties(root: Path, schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]]) -> list[Tie]:
+    """Every tie of the model, each with the mapping entry that loads it. Only historized ties whose one
+    identifier role is an anchor's, with one other anchor role, are supported (ADR-0036)."""
+    by_mnemonic = {anchor.mnemonic: (anchor, identifier) for anchor, _, identifier in anchors}
+    declared = {}
+    for node in as_list(schema.get("tie")):
+        if not isinstance(node, dict):
+            raise ModelError(f"tie {node!r} is not a mapping")
+        roles = []
+        for r in as_list(node.get("role")):
+            if not isinstance(r, dict):
+                raise ModelError(f"tie role {r!r} is not a mapping")
+            role = checked(r.get("role"), ROLE, "tie role")
+            kind = checked(r.get("type"), MNEMONIC, f"tie role {role} type")
+            if kind not in by_mnemonic:
+                raise ModelError(f"tie role {role} plays {kind}, which is no anchor of the model")
+            roles.append((role, kind, r.get("identifier") is True))
+        name = "_".join(f"{kind}_{role}" for role, kind, _ in roles)
+        identifiers = [r for r in roles if r[2]]
+        if len(roles) != 2 or len(identifiers) != 1:
+            raise ModelError(f"tie {name}: only a tie of two anchor roles, one of them its identifier, is supported")
+        if not roles[0][2]:
+            raise ModelError(f"tie {name}: list its identifier role first, so the tie is named as its models are")
+        if "timeRange" not in node:
+            raise ModelError(f"tie {name} must be historized")
+        (owner_role, owner, _), (other_role, other, _) = roles
+        declared[name] = (owner_role, owner, other_role, other, node)
+    loaded = {}
+    for anchor, _, _ in anchors:
+        mapping_path = root / MAPPINGS / f"{anchor.name}.yaml"
+        for entry in as_list(safe_yaml(mapping_path).get("ties")):
+            name = entry.get("tie") if isinstance(entry, dict) else None
+            if name not in declared:
+                raise ModelError(f"{mapping_path.relative_to(root)}: tie {name!r} is not in {MODEL}")
+            owner_role, owner, other_role, other, node = declared[name]
+            if owner != anchor.mnemonic:
+                raise ModelError(
+                    f"{mapping_path.relative_to(root)}: tie {name} is loaded by the mapping of {owner}, "
+                    "its identifier role, not of " + anchor.mnemonic
+                )
+            column = checked(entry.get("column"), SNAKE, f"tie {name} column")
+            if column not in source_columns(root, anchor.source):
+                raise ModelError(f"{mapping_path.relative_to(root)}: tie {name} column {column} is not in {anchor.source}")
+            if name in loaded:
+                raise ModelError(f"tie {name} is loaded twice")
+            other_anchor, other_key = by_mnemonic[other]
+            loaded[name] = Tie(
+                owner=anchor,
+                owner_role=owner_role,
+                other=other_anchor,
+                other_role=other_role,
+                other_key=other_key,
+                time_range=checked(node["timeRange"], TYPE, f"tie {name} timeRange"),
+                description=str(node.get("description") or "").strip(),
+                column=column,
+            )
+    missing = sorted(set(declared) - set(loaded))
+    if missing:
+        raise ModelError(f"tie {missing[0]} has no mapping entry that loads it")
+    return [loaded[name] for name in declared]
+
+
 def jinja_dict(values: dict) -> str:
     inner = ",\n".join(f"    {json.dumps(k)}: {json.dumps(v)}" for k, v in values.items())
     return "{% set a = {\n" + inner + "\n} %}\n"
@@ -228,6 +338,7 @@ def parameters(anchor: Anchor, identifier: Attribute, attribute: Attribute | Non
         "source": anchor.source,
         "changed_at": anchor.changed_at,
         "key_column": identifier.column,
+        "key_type": identifier.data_range,
         "key_view": anchor.key_view,
         "identifier_mnemonic": identifier.prefix,
         "identifier_value": identifier.name,
@@ -238,6 +349,8 @@ def parameters(anchor: Anchor, identifier: Attribute, attribute: Attribute | Non
         values |= {
             "mnemonic": attribute.prefix,
             "name": attribute.name,
+            "identity_column": f"{attribute.prefix}_{anchor.id}",
+            "value_column": attribute.name,
             "posit": attribute.posit,
             "annex": attribute.annex,
             "column": attribute.column,
@@ -246,6 +359,27 @@ def parameters(anchor: Anchor, identifier: Attribute, attribute: Attribute | Non
             "is_identifier": attribute == identifier,
         }
     return values
+
+
+def tie_parameters(tie: Tie, identifier: Attribute) -> dict:
+    """The load's parameters for a tie: those of an attribute of its owner whose value is the other
+    role's identity, found through the other anchor's key as known at each row's PositedAt (ADR-0037)."""
+    return parameters(tie.owner, identifier) | {
+        "mnemonic": tie.name,
+        "name": tie.name,
+        "identity_column": tie.identity_column,
+        "value_column": tie.value_column,
+        "posit": tie.posit,
+        "annex": tie.annex,
+        "column": tie.column,
+        "value_type": tie.other.identity,
+        "time_type": tie.time_range,
+        "is_identifier": False,
+        "reference_key": tie.other_key.name,
+        "reference_key_mnemonic": tie.other_key.prefix,
+        "reference_id": f"{tie.other_key.prefix}_{tie.other.id}",
+        "reference_key_type": tie.other_key.data_range,
+    }
 
 
 def model(config: str, body: str, *, comment: str, values: dict | None = None, depends: list[str] = ()) -> str:
@@ -272,6 +406,70 @@ def json_key(*pairs: str) -> str:
     return "json_object(" + ", ".join(f"'{p}', \"{p}\"" for p in pairs) + ")"
 
 
+def history_checks(
+    name: str, *, m: str, posit: str, annex: str, identity: str, value: str, referenced: list, description: str
+) -> dict[str, str]:
+    """The ``ic_`` views of a historized attribute or tie: its posit's and annex's keys, the anchors
+    each ``referenced`` column must name, and positor 0 asserting one value per identity and ChangedAt."""
+    ref_posit, ref_annex = f"{{{{ ref('{posit}') }}}}", f"{{{{ ref('{annex}') }}}}"
+    return {
+        f"ic_{posit}.sql": view(
+            f"What breaks the keys of {posit}.",
+            "\nunion all\n".join(
+                [
+                    violation(posit, "duplicate primary key", json_key(f"{m}_ID"), ref_posit, f'"{m}_ID"'),
+                    violation(
+                        posit,
+                        "duplicate unique key",
+                        json_key(identity, f"{m}_ChangedAt", value),
+                        ref_posit,
+                        f'"{identity}", "{m}_ChangedAt", "{value}"',
+                    ),
+                ]
+                + [
+                    (
+                        f"select '{posit}', 'no row in {anchor.name} for {column}', "
+                        f"json_object('{column}', c.\"{column}\"), count(*)\n"
+                        f"from {ref_posit} c\nleft join {{{{ ref('{anchor.name}') }}}} p on p.\"{anchor.id}\" = c.\"{column}\"\n"
+                        f'where p."{anchor.id}" is null\ngroup by c."{column}"'
+                    )
+                    for anchor, column in referenced
+                ]
+            ),
+        ),
+        f"ic_{annex}.sql": view(
+            f"What breaks the keys of {annex}.",
+            "\nunion all\n".join(
+                [
+                    violation(
+                        annex,
+                        "duplicate primary key",
+                        json_key(f"{m}_ID", f"{m}_Positor", f"{m}_PositedAt"),
+                        ref_annex,
+                        f'"{m}_ID", "{m}_Positor", "{m}_PositedAt"',
+                    ),
+                    (
+                        f"select '{annex}', 'no row in {posit} for {m}_ID', "
+                        f"json_object('{m}_ID', c.\"{m}_ID\"), count(*)\n"
+                        f"from {ref_annex} c\nleft join {ref_posit} p on p.\"{m}_ID\" = c.\"{m}_ID\"\n"
+                        f'where p."{m}_ID" is null\ngroup by c."{m}_ID"'
+                    ),
+                ]
+            ),
+        ),
+        f"ic_{name}.sql": view(
+            description,
+            (
+                f"select '{name}' as Construct, 'more than one assertion at a time' as Violation,\n"
+                f"    json_object('{m}_Positor', 0, '{identity}', \"{identity}\", '{m}_ChangedAt', \"{m}_ChangedAt\") "
+                "as ViolationKey,\n    count(*) as Occurrences\n"
+                f"from (\n    {{{{ anchor_latest({{'mnemonic': '{m}', 'name': '{name}'}}) }}}}\n)\n"
+                f'group by "{identity}", "{m}_ChangedAt"\nhaving count(*) > 1'
+            ),
+        ),
+    }
+
+
 def integrity_files(anchor: Anchor, attributes: list[Attribute], identifier: Attribute) -> dict[str, str]:
     files = {}
     a = anchor.id
@@ -281,58 +479,11 @@ def integrity_files(anchor: Anchor, attributes: list[Attribute], identifier: Att
     )
     for t in attributes:
         m = t.prefix
-        ref_posit, ref_annex = f"{{{{ ref('{t.posit}') }}}}", f"{{{{ ref('{t.annex}') }}}}"
-        files[f"ic_{t.posit}.sql"] = view(
-            f"What breaks the keys of {t.posit}.",
-            "\nunion all\n".join(
-                [
-                    violation(t.posit, "duplicate primary key", json_key(f"{m}_ID"), ref_posit, f'"{m}_ID"'),
-                    violation(
-                        t.posit,
-                        "duplicate unique key",
-                        json_key(f"{m}_{a}", f"{m}_ChangedAt", t.name),
-                        ref_posit,
-                        f'"{m}_{a}", "{m}_ChangedAt", "{t.name}"',
-                    ),
-                    (
-                        f"select '{t.posit}', 'no row in {anchor.name} for {m}_{a}', "
-                        f"json_object('{m}_{a}', c.\"{m}_{a}\"), count(*)\n"
-                        f"from {ref_posit} c\nleft join {{{{ ref('{anchor.name}') }}}} p on p.\"{a}\" = c.\"{m}_{a}\"\n"
-                        f'where p."{a}" is null\ngroup by c."{m}_{a}"'
-                    ),
-                ]
-            ),
-        )
-        files[f"ic_{t.annex}.sql"] = view(
-            f"What breaks the keys of {t.annex}.",
-            "\nunion all\n".join(
-                [
-                    violation(
-                        t.annex,
-                        "duplicate primary key",
-                        json_key(f"{m}_ID", f"{m}_Positor", f"{m}_PositedAt"),
-                        ref_annex,
-                        f'"{m}_ID", "{m}_Positor", "{m}_PositedAt"',
-                    ),
-                    (
-                        f"select '{t.annex}', 'no row in {t.posit} for {m}_ID', "
-                        f"json_object('{m}_ID', c.\"{m}_ID\"), count(*)\n"
-                        f"from {ref_annex} c\nleft join {ref_posit} p on p.\"{m}_ID\" = c.\"{m}_ID\"\n"
-                        f'where p."{m}_ID" is null\ngroup by c."{m}_ID"'
-                    ),
-                ]
-            ),
-        )
-        files[f"ic_{t.name}.sql"] = view(
-            f"What {t.posit} and {t.annex} say together: positor 0 asserting more than one value "
+        files |= history_checks(
+            t.name, m=m, posit=t.posit, annex=t.annex, identity=f"{m}_{a}", value=t.name,
+            referenced=[(anchor, f"{m}_{a}")],
+            description=f"What {t.posit} and {t.annex} say together: positor 0 asserting more than one value "
             "for one identity and ChangedAt at its latest PositedAt (the model is decisive).",
-            (
-                f"select '{t.name}' as Construct, 'more than one assertion at a time' as Violation,\n"
-                f"    json_object('{m}_Positor', 0, '{m}_{a}', \"{m}_{a}\", '{m}_ChangedAt', \"{m}_ChangedAt\") "
-                "as ViolationKey,\n    count(*) as Occurrences\n"
-                f"from (\n    {{{{ anchor_latest({{'mnemonic': '{m}', 'name': '{t.name}'}}) }}}}\n)\n"
-                f'group by "{m}_{a}", "{m}_ChangedAt"\nhaving count(*) > 1'
-            ),
         )
     k = identifier
     files[f"ic_{anchor.key_view}.sql"] = view(
@@ -427,6 +578,72 @@ def anchor_files(anchor: Anchor, attributes: list[Attribute], identifier: Attrib
     return files
 
 
+def tie_files(tie: Tie, identifier: Attribute) -> dict[str, str]:
+    """A tie's posit and annex tables, assembled view, perspectives and key checks (ADR-0036)."""
+    files: dict[str, str] = {}
+    values = tie_parameters(tie, identifier)
+    depends = [tie.other_key.name]
+    files[f"{tie.posit}.sql"] = model(
+        "materialized='incremental'",
+        "{{ anchor_posit(a) }}",
+        comment=f"The posits of {tie.name}: every {tie.other.descriptor} a {tie.owner.descriptor} was tied to at a ChangedAt.",
+        values=values,
+        depends=depends,
+    )
+    files[f"{tie.annex}.sql"] = model(
+        "materialized='incremental'",
+        "{{ anchor_annex(a) }}",
+        comment=f"The annex of {tie.name}: who asserted or retracted each posit, when, and in which batch.",
+        values=values,
+        depends=depends,
+    )
+    files[f"{tie.name}.sql"] = model(
+        "materialized='view'",
+        "{{ anchor_assembled(a) }}",
+        comment=f"{tie.name} assembled: every annex row with its posit.",
+        values=values,
+    )
+    files[f"l{tie.name}.sql"] = view(
+        f"The latest perspective of {tie.name}: per {tie.owner.descriptor}, its latest reliable "
+        f"{tie.other.descriptor} as positor 0 states it now.",
+        tie_perspective(tie),
+    )
+    files[f"p{tie.name}.sql"] = model(
+        "materialized='table_macro', parameters=['changingTimepoint']",
+        tie_perspective(tie, changed_by="changingTimepoint"),
+        comment=f"The point-in-time perspective of {tie.name}, a table macro taking changingTimepoint (ADR-0030).",
+    )
+    files[f"t{tie.name}.sql"] = model(
+        "materialized='table_macro', parameters=['changingTimepoint', 'positingTimepoint']",
+        tie_perspective(tie, changed_by="changingTimepoint", posited_by="positingTimepoint"),
+        comment=f"The time-traveling perspective of {tie.name}, a table macro taking changingTimepoint and "
+        "positingTimepoint (ADR-0033).",
+    )
+    files |= history_checks(
+        tie.name, m=tie.name, posit=tie.posit, annex=tie.annex, identity=tie.identity_column,
+        value=tie.value_column, referenced=[(tie.owner, tie.identity_column), (tie.other, tie.value_column)],
+        description=f"The key of {tie.name}: positor 0 asserting more than one {tie.other.descriptor} for one "
+        f"{tie.owner.descriptor} and ChangedAt at its latest PositedAt.",
+    )
+    return files
+
+
+def tie_perspective(tie: Tie, changed_by: str | None = None, posited_by: str | None = None) -> str:
+    """Per identifier identity, the tie's latest reliable version; as of ``changed_by`` and as known at
+    ``posited_by`` when given, as ``perspective`` does for an anchor's attributes."""
+    m = tie.name
+    cutoff = f", '{changed_by}'" if changed_by else ""
+    if posited_by:
+        cutoff += f", posited_by='{posited_by}'"
+    columns = [f'"Metadata_{m}"', f'"{m}_ID"', f'"{m}_ChangedAt"', f'"{m}_PositedAt"', f'"{m}_Positor"',
+               f'"{m}_Reliability"', f'"{tie.identity_column}"', f'"{tie.value_column}"']
+    return (
+        "select\n" + ",\n".join(f"    {c}" for c in columns) + "\nfrom (\n"
+        f"    {{{{ anchor_latest({{'mnemonic': '{m}', 'name': '{m}'}}{cutoff}) }}}}\n)\n"
+        f'qualify row_number() over (partition by "{tie.identity_column}" order by "{m}_ChangedAt" desc) = 1'
+    )
+
+
 def perspective(
     anchor: Anchor, attributes: list[Attribute], changed_by: str | None = None, posited_by: str | None = None
 ) -> str:
@@ -458,7 +675,7 @@ def perspective(
     return "select\n" + ",\n".join(columns) + f"\nfrom {{{{ ref('{anchor.name}') }}}} p\n" + "\n".join(joins)
 
 
-def schema_json(schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]]) -> str:
+def schema_json(schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list[Tie]) -> str:
     """The model as Anchor's jsonified XML: constructs keyed by mnemonic (CreateSchemaTracking)."""
     out_anchors = {}
     for anchor, attributes, identifier in anchors:
@@ -491,14 +708,26 @@ def schema_json(schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attri
             "knot": {},
             "anchor": out_anchors,
             "nexus": {},
-            "tie": {},
+            "tie": {
+                tie.name: {
+                    "timeRange": tie.time_range,
+                    "metadata": TIE_METADATA,
+                    "description": tie.description,
+                    "roles": [tie.owner_role, tie.other_role],
+                    "role": [
+                        {"role": tie.owner_role, "type": tie.owner.mnemonic, "identifier": "true"},
+                        {"role": tie.other_role, "type": tie.other.mnemonic, "identifier": "false"},
+                    ],
+                }
+                for tie in tied
+            },
         }
     }
     return json.dumps(document, ensure_ascii=False, sort_keys=False, separators=(",", ":"))
 
 
-def tracking_files(schema: dict, anchors) -> dict[str, str]:
-    text = schema_json(schema, anchors).replace("'", "''")
+def tracking_files(schema: dict, anchors, tied: list[Tie]) -> dict[str, str]:
+    text = schema_json(schema, anchors, tied).replace("'", "''")
     files = {
         "_Schema.sql": model(
             "materialized='incremental'",
@@ -607,12 +836,23 @@ from {{ ref('_Schema') }} s, unnest(json_keys(s.schema->'schema'->'tie')) as t(n
     return files
 
 
-def schema_file(anchors) -> str:
+def schema_file(anchors, tied: list[Tie]) -> str:
     models = []
     for anchor, attributes, identifier in anchors:
         models.append({"name": anchor.name, "description": anchor.description})
         for t in attributes:
             models.append({"name": t.name, "description": t.description})
+    for tie in tied:
+        models.append({"name": tie.name, "description": tie.description})
+        # A tie's key checks warn rather than fail the build, outside IntegrityViolations ([7]).
+        for check in (f"ic_{tie.posit}", f"ic_{tie.annex}", f"ic_{tie.name}"):
+            models.append(
+                {
+                    "name": check,
+                    "description": f"What breaks the keys of {tie.name}; a row warns.",
+                    "data_tests": [{"empty": {"config": {"severity": "warn"}}}],
+                }
+            )
     models.append(
         {
             "name": "IntegrityViolations",
@@ -623,8 +863,9 @@ def schema_file(anchors) -> str:
     return yaml.safe_dump({"version": 2, "models": models}, sort_keys=False, allow_unicode=True, width=100)
 
 
-def diagram(anchors: list[tuple[Anchor, list[Attribute], Attribute]]) -> str:
-    """Each anchor with its identity and its attributes; knots, ties and load tables are left out."""
+def diagram(anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list[Tie]) -> str:
+    """Each anchor with its identity and its attributes, and each tie as a relationship named for it,
+    many of its identifier role to one of the other; knots and load tables are left out."""
     return erd.diagram(
         [
             (
@@ -633,23 +874,29 @@ def diagram(anchors: list[tuple[Anchor, list[Attribute], Attribute]]) -> str:
                 + [erd.row(t.data_range, t.name, comment="historized") for t in attributes],
             )
             for anchor, attributes, _ in anchors
-        ]
+        ],
+        [f'{t.owner.name} }}o--|| {t.other.name} : "{t.name}"' for t in tied],
     )
 
 
-def packages(schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]]) -> dict[Path, dict[str, str]]:
+def packages(
+    schema: dict, anchors: list[tuple[Anchor, list[Attribute], Attribute]], tied: list[Tie]
+) -> dict[Path, dict[str, str]]:
     files: dict[str, str] = {}
     for anchor, attributes, identifier in anchors:
         files |= anchor_files(anchor, attributes, identifier)
     checks = [name.removesuffix(".sql") for name in files if name.startswith("ic_")]
+    identifiers = {anchor.mnemonic: identifier for anchor, _, identifier in anchors}
+    for tie in tied:
+        files |= tie_files(tie, identifiers[tie.owner.mnemonic])
     files["IntegrityViolations.sql"] = view(
         "Every integrity check of the model in one view: a row is something wrong.",
         "select\n    cast(null as varchar) as Construct,\n    cast(null as varchar) as Violation,\n"
         "    cast(null as json) as ViolationKey,\n    cast(null as bigint) as Occurrences\nwhere false\n"
         + "\n".join(f"union all select * from {{{{ ref('{c}') }}}}" for c in checks),
     )
-    files |= tracking_files(schema, anchors)
-    files["anchor.yml"] = schema_file(anchors)
+    files |= tracking_files(schema, anchors, tied)
+    files["anchor.yml"] = schema_file(anchors, tied)
     return {PACKAGE: files}
 
 
@@ -657,12 +904,13 @@ def generate(*, check: bool = False) -> int:
     """Write the models, or with ``check`` report drift: 0 written or clean, 1 drift, 2 invalid declarations."""
     try:
         schema, anchors = read(Path.cwd())
-        planned = packages(schema, anchors)
+        tied = ties(Path.cwd(), schema, anchors)
+        planned = packages(schema, anchors, tied)
     except (ModelError, KeyError) as error:
         print(f"{MODEL}: {error}")
         return 2
     return ownership.run(
-        GENERATOR, f"{MODEL} and {MAPPINGS}/", planned, erd.region(GENERATOR, diagram(anchors)), check=check
+        GENERATOR, f"{MODEL} and {MAPPINGS}/", planned, erd.region(GENERATOR, diagram(anchors, tied)), check=check
     )
 
 

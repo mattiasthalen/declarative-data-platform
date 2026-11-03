@@ -31,6 +31,9 @@ The staged models, one per contract, with their primary keys.
 <!-- erd:conform begin: written by `uv run conform generate` -->
 ```mermaid
 erDiagram
+  adventure_works__product_subcategories {
+    bigint product_subcategory_id PK
+  }
   adventure_works__products {
     bigint product_id PK
   }
@@ -54,6 +57,12 @@ erDiagram
     date PR_SEN_Product_SellEnd "historized"
     date PR_DIS_Product_Discontinued "historized"
   }
+  PS_ProductSubcategory {
+    int PS_ID PK
+    int PS_SID_ProductSubcategory_SourceId "historized"
+    varchar(50) PS_NAM_ProductSubcategory_Name "historized"
+  }
+  PR_Product }o--|| PS_ProductSubcategory : "PR_in_PS_contains"
 ```
 <!-- erd:integrate end -->
 
@@ -76,13 +85,22 @@ erDiagram
     date product__sell_end
     date product__discontinued
   }
+  product_subcategory {
+    varchar _key__product_subcategory PK
+    timestamp product_subcategory__valid_from
+    timestamp product_subcategory__valid_to
+    int product_subcategory__source_id
+    varchar(50) product_subcategory__name
+  }
   _bridge {
     varchar stage
     varchar _key__product FK
+    varchar _key__product_subcategory FK
     timestamp _valid_from
     timestamp _valid_to
   }
   _bridge }o--|| product : "_key__product"
+  _bridge }o--|| product_subcategory : "_key__product_subcategory"
 ```
 <!-- erd:serve end -->
 
@@ -94,11 +112,12 @@ uv run task ingest                  # land every declared resource under ./lake 
 uv run task generate                # regenerate every layer's models
 uv run task check                   # fail if committed models or diagrams drifted from the declarations
 uv run task build                   # build warehouse/dev.duckdb (TARGET=prod for the other)
-uv run task simulate                # append a changed copy of the latest Products load (the feed is static)
+uv run task simulate                # append changed copies of the latest Products and ProductSubcategories loads (the feed is static)
 ```
 
 `uv run simulate --seed N --loads K` appends K seeded, changed loads to the lake: edits,
-corrections, source nulls, late arrivals, new products and products dropping out of a load. On an
+corrections, source nulls, late arrivals, new products, products dropping out of a load,
+products moving or losing their subcategory, and subcategory renames. On an
 empty lake it lands a committed snapshot of the feed first, so a seed always gives the same lake;
 CI builds against seed 7 (ADR-0027).
 
@@ -137,7 +156,10 @@ infra's server, set `PREFECT_API_URL` and `ORCHESTRATE_WORK_POOL` to its values 
 `orchestrate:deploy` from the checkout its workers use. Scheduled runs never regenerate models: that stays a commit-time act.
 
 `uv run task --list` shows every task. Integrate ignores `--full-refresh` and builds incrementally:
-its history is only appended to (ADR-0006).
+its history is only appended to (ADR-0006). Serve's incremental models fail when a change of the
+model changes their columns; run
+`uv run dbt build --target <target> --full-refresh --select path:models/serve` once on each target
+built before it (ADR-0038).
 
 The first business question it answers: how many products were on sale on a given day,
 per product line and colour? It reads each product's version valid on that day; the first

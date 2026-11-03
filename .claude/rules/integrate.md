@@ -16,6 +16,9 @@ it read-only: `GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 https://github.com/Roen
 - **`anchor/model.yaml` is the whole model and uses only `anchor.xsd`'s elements and attributes.**
   Where an anchor's attributes come from goes in `anchor/mappings/<anchor>.yaml`, one per anchor
   ([ADR-0004](../../docs/adr/0004-declare-the-anchor-model-as-one-yaml-mirror-of-anchor-xsd.md)).
+- **A tie lists its identifier role first**, so its name (`PR_in_PS_contains`) matches its
+  models; only historized ties of two anchor roles, one of them the identifier, are generated
+  ([ADR-0036](../../docs/adr/0036-load-a-to-one-tie-as-an-attribute-of-its-identifier-role.md)).
 - **The crt loading rules live in the generated SQL** (`macros/integrate/anchor.sql`): decisive,
   idempotent, not assertive, since DuckDB has no triggers
   ([ADR-0006](../../docs/adr/0006-apply-anchor-crt-loading-rules-in-generated-sql.md)).

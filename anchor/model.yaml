@@ -49,3 +49,36 @@ schema:
           dataRange: date
           timeRange: timestamp
           description: The day the product was discontinued; it is no longer on sale from that day.
+    - mnemonic: PS
+      descriptor: ProductSubcategory
+      identity: int
+      description: A subcategory products are grouped in, such as Mountain Bikes.
+      identifier:
+        - route: SID
+      attribute:
+        - mnemonic: SID
+          descriptor: SourceId
+          dataRange: int
+          timeRange: timestamp
+          description: The subcategory's id in the source, which products name it by; its natural key (ADR-0037).
+          key:
+            - stop: "1"
+              route: SID
+              of: PS
+        - mnemonic: NAM
+          descriptor: Name
+          dataRange: varchar(50)
+          timeRange: timestamp
+          description: The subcategory's name.
+  tie:
+    - timeRange: timestamp
+      description: The subcategory a product is in; one at a time, and it can change (ADR-0036).
+      role:
+        - role: in
+          type: PR
+          identifier: true
+          description: The product, which is in one subcategory at a time.
+        - role: contains
+          type: PS
+          identifier: false
+          description: The subcategory that contains the product.

@@ -7,7 +7,7 @@ What the design still assumes, and how you would know it stopped holding; then f
 | id | assumption | area | how you would know it stopped holding |
 |---|---|---|---|
 | A1 | A full pull of Products is small enough to repeat every run. | ingest | A Products load takes more than a minute or the lake grows past a few hundred MB. |
-| A2 | `ModifiedDate` moves whenever a Product value changes in the source. | integrate | A load holds a different value for a product with an unchanged `ModifiedDate` more often than rarely: corrections pile up in the annexes. |
+| A2 | `ModifiedDate` moves whenever a Products or ProductSubcategories value changes in the source, a product's subcategory included. | integrate | A load holds a different value, or a different subcategory, for a row with an unchanged `ModifiedDate` more often than rarely: corrections pile up in the annexes. |
 | A3 | dlt's load id is fractional epoch seconds as text, increasing with time. | conform | `try_cast` of `_dlt_load_id` to a number fails, or a later load has a smaller id. |
 | A4 | Only one `dbt build` runs against a target at a time, and none runs while ingest is landing a load. A scheduled run orders its own ingest before its own build, and `orchestrate/prefect.yaml` holds Prefect to one `run` and one `build` at a time (ADR-0026); a `build` started by hand in Prefect queues behind the scheduled `build` but is not held off the scheduled ingest, and an `ingest-source` started by hand in Prefect, or anything started with `task`, is held off nothing. | operations | A hand-started build or ingest overlaps a scheduled run, or a staged load has fewer rows than its files in the lake. |
 | A5 | The generated load writes each posit and annex key once; nothing in DuckDB enforces it, since no model declares a contract or constraint. | integrate | `IntegrityViolations` reports a duplicate key and its `empty` test fails the build. |
@@ -25,7 +25,7 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A17 | The feed's page order holds between the requests of one load: its next link pages by `$skip` with no `$orderby`. | ingest | A row that moves between pages mid-load lands twice or not at all in that load. |
 | A18 | A flow run starts in the directory `prefect deploy` ran from (the repo root, through `task orchestrate:deploy`), and the work pool's workers have the repo at that path, with the lake and the DuckDB file reachable from it. The pool admits one flow run more than there are sources, since `run` waits on its children while they all ingest at once; a child that cannot start within 10 minutes is cancelled. Anyone who can create a flow run can choose the commands it runs (the command parameters, ADR-0024), so Prefect API access is code execution on the workers. | orchestrate | An `ingest-source` or `build` run fails on a missing file or builds an empty lake; children of `run` stay Scheduled until `run` cancels them. |
 | A19 | Prefect resolves alongside dbt-core and dlt in one lock. | orchestrate | `uv lock` fails, or pins dbt-core or dlt outside their ranges in `pyproject.toml`. |
-| A20 | The committed Products snapshot is representative of the live feed: same fields, same quirks. | simulate | The live feed's measured facts change (row count, a field added or renamed, product lines no longer padded) and `src/simulate/adventure_works__products.jsonl` was not refreshed. |
+| A20 | The committed Products and ProductSubcategories snapshots are representative of the live feed: same fields, same quirks. | simulate | The live feed's measured facts change (row count, a field added or renamed, product lines no longer padded) and `src/simulate/adventure_works__products.jsonl` or `src/simulate/adventure_works__product_subcategories.jsonl` was not refreshed. |
 | A21 | The simulated lake's history exercises the crt rules CI cares about: every change kind lands at least once in CI's seeded run. | ci | The CI seed's run lands no row of some change kind (`tests/simulate/test_simulate.py::test_change_kinds` fails on it). |
 | A22 | GitHub's Mermaid renders the README's `erDiagram`s: parenthesised types (`varchar(25)`, any version), names with a leading underscore (`_bridge`, Mermaid 10.5 and later) and quoted comments; a comma in a type (`decimal(10,2)`) needs Mermaid 11.16 and later, and no model declares one yet. | docs | The README on GitHub shows a Mermaid error box instead of a diagram. |
 | A23 | GitHub renders an SVG README image that carries its fonts as `data:` URIs in `@font-face`: in those fonts, with no outside fetch, in both its light and dark theme. It rests on two things: a browser draws an SVG shown through an image tag with only what the file carries, and GitHub serves a relative README image from the repository's raw endpoint, whose policy (`default-src 'none'; style-src 'unsafe-inline'; sandbox`) names no font source, a policy browsers do not apply to fonts inside an image. Checked in Chromium only. | docs | The hero on github.com shows Georgia or a sans fallback in the wordmark, or no image. |
@@ -37,6 +37,8 @@ What the design still assumes, and how you would know it stopped holding; then f
 | A29 | GitHub Pages serves the explainer's page at `https://mattiasthalen.github.io/declarative-data-platform/` with its MP4 (H.264, AAC) as `video/mp4` and answers range requests, so a browser, a phone's included, plays it inline; the repository's Pages source is set to GitHub Actions; a deployment that fails or is cancelled leaves the previous site up. | docs | The README's explainer link returns 404 or the page shows no playable video, or the `film` workflow's deploy job fails, or the site is gone after a failed deploy. |
 | A30 | The Kokoro-82M files stay downloadable from kokoro-onnx's `model-files-v1.0` release with the checksums `src/film/` pins, and `kokoro-onnx` 0.6.1 runs them on a GitHub-hosted Ubuntu runner. | film | The `film` workflow fails fetching or verifying the model, or synthesizing a line. |
 | A31 | A GitHub-hosted `ubuntu-latest` runner renders the two-minute explainer at 1920x1080, 60 fps, with Chromium and ffmpeg, inside the workflow's timeout. | film | The `film` workflow times out. |
+| A32 | A subcategory's `ProductSubcategoryId` names it for its whole life and is never reused for another; it is the subcategory's key (ADR-0037). | integrate | The feed serves one id under two names that are clearly different subcategories, or an id a product held disappears and returns meaning something else. |
+| A33 | In a run, a referenced resource lands before the resource naming it: ingest runs a source's resources in file-name order, and `product_subcategories.yaml` sorts before `products.yaml` (ADR-0037). | ingest | A tie posit lands one build after the product row that names it, or a product's new subcategory never shows in the tie after a subcategories load was retried. |
 
 ## Measured (2026-10-30, the AdventureWorks OData feed)
 
@@ -53,6 +55,11 @@ What the design still assumes, and how you would know it stopped holding; then f
 ## Measured (2026-10-31, CI)
 
 - The `test` job on a GitHub-hosted `ubuntu-latest` (Ubuntu 26.04) runner: 118 passed, 1 skipped, job 3 min 47 s (PR #22, run 41252831815). The `check` job: 12 s.
+
+## Measured (2026-11-02, the AdventureWorks OData feed)
+
+- ProductSubcategories: 37 rows, every `ModifiedDate` 2008-04-30; fields `ProductSubcategoryId`, `ProductCategoryId`, `Name`, `Rowguid`, `ModifiedDate`.
+- Products: 209 of 504 have no `ProductSubcategoryId`; the other 295 reference all 37 subcategories.
 
 ## Measured (2026-11-02, CI)
 
