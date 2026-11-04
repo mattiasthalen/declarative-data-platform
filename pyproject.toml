@@ -24,6 +24,7 @@ film = [
     "kokoro-onnx==0.6.1",
     "numpy>=2",
     "playwright>=1.50,<1.64",
+    "scipy>=1.14.1,<2",
 ]
 
 [tool.uv]

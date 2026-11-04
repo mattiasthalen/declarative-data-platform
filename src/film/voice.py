@@ -7,6 +7,7 @@ the one pinned here, so every render speaks with the same voice.
 from __future__ import annotations
 
 import hashlib
+import re
 import urllib.request
 from pathlib import Path
 from typing import Callable
@@ -21,6 +22,8 @@ MODELS = {
 }
 # The narrator leaves this much air before the next line's cue.
 BREATH = 0.15
+# and this much after a question inside a line, before its answer.
+QUESTION_PAUSE = 0.6
 
 
 class ModelError(Exception):
@@ -57,18 +60,33 @@ def fetch(models: Path) -> None:
     verify(models)
 
 
-def synthesizer(models: Path, voice: str, speed: float) -> Callable[[str], np.ndarray]:
-    """Kokoro speaking in ``voice``; each call returns one line as samples at KOKORO_RATE."""
+def synthesizer(models: Path, voice: str, speed: float, lang: str) -> Callable[[str], np.ndarray]:
+    """Kokoro speaking in ``voice`` with ``lang``'s phonemes; each call returns one line as samples at
+    KOKORO_RATE."""
     verify(models)
     from kokoro_onnx import Kokoro
 
     kokoro = Kokoro(str(Path(models) / "kokoro-v1.0.onnx"), str(Path(models) / "voices-v1.0.bin"))
 
-    def synthesize(text: str) -> np.ndarray:
-        samples, rate = kokoro.create(text, voice=voice, speed=speed, lang="en-us")
+    def speak(text: str) -> np.ndarray:
+        samples, rate = kokoro.create(text, voice=voice, speed=speed, lang=lang)
         if rate != KOKORO_RATE:
             raise ModelError(f"Kokoro returned {rate} Hz, expected {KOKORO_RATE}")
         return np.asarray(samples, dtype=np.float32)
+
+    def synthesize(text: str) -> np.ndarray:
+        """Kokoro runs a question straight into its answer, so each question inside a line is
+        spoken on its own, with QUESTION_PAUSE of silence before the rest."""
+        parts = [part.strip() for part in re.split(r"(?<=\?)\s+", text.strip()) if part.strip()]
+        if not parts:
+            raise ValueError(f"a narration line has no words to speak: {text!r}")
+        pause = np.zeros(int(round(QUESTION_PAUSE * KOKORO_RATE)), dtype=np.float32)
+        pieces = []
+        for number, part in enumerate(parts):
+            if number:
+                pieces.append(pause)
+            pieces.append(speak(part))
+        return np.concatenate(pieces)
 
     return synthesize
 

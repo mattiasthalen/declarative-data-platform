@@ -442,3 +442,32 @@ when all of these hold:
 
 A viewer who comes away unable to say what one of the four layers does, or why it is there,
 fails item 1 for that layer: record which, and at what time in the cut.
+
+# Judged checks for story #49 (the explainer's own sound)
+
+## J49-1: the explainer's own sound (AC1, AC2, EC3)
+
+Render the cut with `uv run task film` and listen to it beside the approved reference,
+`80s-e-blend-kick.mp3`: the approved sketch, in the project's files for story #49 and attached to
+its evidence page, not in this repo. The reviewer records pass or fail for each item, and for a
+fail, what was heard and at what time in the cut.
+
+Pass when all of these hold:
+
+1. AC1, the palette matches the sketch:
+   1. The tempo is 96 BPM.
+   2. A pad plays the chords Am, C/G, F, E, one a bar, until the lockup rests on Am.
+   3. The bass jumps octaves in 16ths on the chord roots.
+   4. A pulse arpeggio runs in 8ths.
+   5. A dry kick plays on every beat, and a short, dry snare on beat 3.
+2. AC1, nothing of daana-promo's: no plucked arpeggio, no hi-hat, no bell at a chapter's start,
+   no washy gated snare.
+3. AC1, the voice is a British male (Lewis).
+4. AC2, the instruments enter as arranged; at each time, name what plays:
+   1. 0:05: the pad only.
+   2. 0:15: the pad, with kick and bass.
+   3. 0:35: as at 0:15, with the snare.
+   4. 0:55: as at 0:35, with the arpeggio.
+   5. 1:15: everything.
+   6. 1:45: the lockup, the pad only, resting on Am.
+5. EC3, the last seconds: the pad alone, fading out, and no note is cut off.
