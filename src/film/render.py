@@ -24,6 +24,8 @@ ROOT = HERE.parent.parent
 OUT = ROOT / "out" / "film"
 MODELS = ROOT / ".models"
 CUT = "declarative-data-platform-explainer.mp4"
+POSTER = "declarative-data-platform-explainer.jpg"  # the player shows it before play: the film fades in from dark
+POSTER_INTO_LOCKUP = 3.0  # seconds, once the title card has faded in
 FPS = 60
 WIDTH, HEIGHT = 1920, 1080
 # The zoom-out box: its label takes the top band, its tiles are laid out in the space below it, and
@@ -201,6 +203,8 @@ def cut(out: Path = OUT, workers: int | None = None) -> Path:
             "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
             "-t", f"{duration:.3f}", str(target),
         )
+    lockup = next(beat["start"] for beat in timeline.beats() if beat["chapter"] == "lockup")
+    _ffmpeg("-ss", f"{lockup + POSTER_INTO_LOCKUP:.3f}", "-i", str(target), "-frames:v", "1", "-q:v", "3", str(out / POSTER))
     print(f"written: {target.relative_to(ROOT) if target.is_relative_to(ROOT) else target}", flush=True)
     return target
 
