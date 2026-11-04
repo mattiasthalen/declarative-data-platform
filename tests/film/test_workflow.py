@@ -13,6 +13,9 @@ page the site serves plays the MP4 inline. The MP4 the workflow stages and the p
 deploy on main.
 
 - ``-k film_workflow``: AC11.
+- ``-k film_poster``: the render job also stages the poster still the render writes beside the
+  MP4, ``declarative-data-platform-explainer.jpg``, into the site, and the page's video names it
+  as its poster, so the player shows the lockup's title card before play (story #49: AC13).
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ FILM = WORKFLOWS / "film.yml"
 CI = WORKFLOWS / "ci.yml"
 PAGE = "src/film/site/index.html"
 ASSET = CUT
+POSTER = "declarative-data-platform-explainer.jpg"
 # [1b]: what a push to main must touch to render.
 PATHS = {"src/film", "src/artwork", "sources", "contracts", "anchor", "orchestrate/prefect.yaml"}
 FILES = {"orchestrate/prefect.yaml"}
@@ -275,3 +279,33 @@ def test_film_workflow_site_page():
     (video,) = parsed.videos
     assert video.get("src") == ASSET, f"{PAGE}'s video plays {video.get('src')!r}, expected {ASSET!r}"
     assert "controls" in video and "playsinline" in video, f"{PAGE}'s video lacks controls or playsinline: {video}"
+
+
+def test_film_poster_workflow():
+    """AC13: before its upload-pages-artifact step, film.yml's render job copies the poster the
+    render wrote, out/film/declarative-data-platform-explainer.jpg, into the site with the page
+    and the MP4."""
+    film = load(FILM)
+    _, job = render_job(film)
+    job_steps = job.get("steps") or []
+    uploads = [i for i, s in enumerate(job_steps) if uses(s) == "actions/upload-pages-artifact"]
+    assert len(uploads) == 1, f"film.yml's render job has {len(uploads)} upload-pages-artifact steps, expected one"
+    (upload,) = uploads
+    site = str((job_steps[upload].get("with") or {}).get("path", "")).rstrip("/")
+    assert site == "out/film/site", f"film.yml uploads {site!r} as the site, expected out/film/site"
+    runs = [str(s.get("run", "")) for s in job_steps[:upload]]
+    staging = [run for run in runs if POSTER in run and site in run]
+    assert staging, f"before its upload, film.yml's render job does not put {POSTER} into {site}/"
+    assert any(f"out/film/{POSTER}" in run for run in staging), (
+        f"film.yml stages a {POSTER} into {site}/, but not the one the render writes, out/film/{POSTER}"
+    )
+
+
+def test_film_poster_site_page():
+    """AC13: the site page's one <video> names the poster still as its poster."""
+    page = REPO / PAGE
+    parsed = Videos()
+    parsed.feed(page.read_text(encoding="utf-8"))
+    assert len(parsed.videos) == 1, f"{PAGE} holds {len(parsed.videos)} <video> elements, expected one"
+    (video,) = parsed.videos
+    assert video.get("poster") == POSTER, f"{PAGE}'s video has poster {video.get('poster')!r}, expected {POSTER!r}"
